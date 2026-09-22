@@ -1,0 +1,46 @@
+Stage 10 E2E — final demo run — API: http://127.0.0.1:8010
+SANDBOX ONLY — no real money moves. Every recovery is simulated.
+(rate limiting is ENABLED on the live dev server: pausing 1.2s between calls; HTTP 429 is a FAIL)
+
+  PASS [R1] demo reset is deterministic — reset=true, 6 scenarios
+  PASS [S1a] S1 prepared, no recovery row yet — prepared, not processed; GET recovery -> 404
+  PASS [S1b] transaction read-back — current_state=RECOVERY_PENDING
+  PASS [S1c] reconstruction derives a root cause — root_cause=MERCHANT_CONFIRMATION_TIMEOUT
+  PASS [S1d] risk assessment exists (expect GENUINE_FAILURE) — anomaly_type=GENUINE_FAILURE
+  PASS [S1e] recovery process AUTO_RECOVERED/VERIFIED — AUTO_RECOVERED, recovery be2c1817-afb…
+  PASS [S1f] recovery read-back agrees — row VERIFIED, same recovery_id
+  PASS [S1g] sandbox ledger reconciles — released 1200; available_limit reconciles (10000)
+  PASS [S1h] bn/customer explanation generated — bn explanation ok (provider generated)
+  PASS [S1i] audit trail records demo actions — 1 DEMO audit row(s)
+  PASS [S2] double deduction blocked (provider not called) — blocked: DOUBLE_DEDUCTION, no provider call
+  PASS [S2-state] DEMO-S2 never released (S2) — current_state=RECOVERY_PENDING
+  PASS [S5] late settlement blocks recovery (layered) — blocked: INSUFFICIENT_EVIDENCE
+  PASS [S5-state] DEMO-S5 never released (S5) — current_state=RECOVERY_PENDING
+  PASS [S6] duplicate process is idempotent (released once) — released exactly once (1200.0 BDT)
+  PASS [SEC1] CUSTOMER denied on all demo/recovery/audit routes — 7 CUSTOMER probes -> 403
+  PASS [SEC2] SUPPORT never mutates or reads demo state (ledger readable) — mutate -> 403 x2; demo reads -> 403 x2; ledger read -> 200
+  PASS [SEC3] secret-leakage sweep over all collected bodies — 37 response bodies swept, zero leaks
+
+PERFORMANCE (measured, live server)
+------------------------------------------------
+  S1a scenario+no-recovery       2413.2 ms
+  S1b transaction read           1205.0 ms
+  S1c reconstruction             1209.3 ms
+  S1d risk assessment            1210.8 ms
+  S1e recovery process          11259.3 ms
+  S1f recovery read-back         1203.4 ms
+  S1g ledger consistency         1202.7 ms
+  S1h explanation                1215.0 ms
+  S1i audit trail                1204.3 ms
+  S2 double deduction            3638.4 ms
+  S5 race                        6058.5 ms
+  S6 idempotency                14885.7 ms
+  SEC customer                   8449.2 ms
+  SEC support                    6031.2 ms
+  SEC secrets                       0.4 ms
+------------------------------------------------
+  TOTAL                         65092.6 ms
+
+STAGE 10 E2E: 18/18 checks passed
+Autonomous recovery operates on a simulated sandbox provider. No real financial transaction is performed.
+No API key value is ever printed by this script.

@@ -33,6 +33,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
+from pydantic import ValidationError
+
 from api.core.exceptions import AppError
 from api.core.payment_lifecycle import EVENT_TYPE_INFO, HAPPY_PATH_EVENTS
 
@@ -40,7 +42,13 @@ logger = logging.getLogger("payment_recovery.demo_scenarios")
 
 # Fixed demo timeline — deterministic timestamps (spec §28): all events are
 # derived from this base, S<n> events starting at base + (n-1) minutes.
-DEMO_BASE = datetime(2026, 10, 3, 9, 0, 0, tzinfo=timezone.utc)
+# The anchor is read from the wall clock ONCE at import (yesterday, same
+# time-of-day) so every chain stays in the past and passes ingestion's
+# >24h future-skew guard regardless of when this runs; all relative
+# offsets are unchanged.
+DEMO_BASE = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+    hour=9, minute=0, second=0, microsecond=0
+)
 
 BASE_LATENCY_MS = 120
 TERMINAL_EVENT_MS = 90
@@ -236,6 +244,14 @@ class DemoScenarioNotFoundError(AppError):
     code = "DEMO_SCENARIO_NOT_FOUND"
 
 
+class DemoFixtureInvalidError(AppError):
+    """A demo fixture event was rejected by ingestion validation (e.g. a
+    base anchor violating the clock-skew guard). 422, never a 500."""
+
+    status_code = 422
+    code = "DEMO_FIXTURE_INVALID"
+
+
 def _require_scenario(key: str) -> dict:
     spec = SCENARIOS.get(key)
     if spec is None:
@@ -278,7 +294,14 @@ def prepare_scenario(db, key: str) -> list[str]:
     # 2. event evidence via the real ingestion service (duplicate-safe)
     events = build_events(tid, spec["steps"], scenario_start(key))
     if events:
-        result = ingest_events(db, tid, [PaymentEventIn(**e) for e in events])
+        try:
+            payloads = [PaymentEventIn(**e) for e in events]
+        except ValidationError as exc:
+            raise DemoFixtureInvalidError(
+                f"demo fixture events for {key} failed ingestion "
+                f"validation: {exc}"
+            ) from exc
+        result = ingest_events(db, tid, payloads)
         actions.append(
             f"events_ingested(created={result['created']}, "
             f"duplicates={result['duplicates']})"
@@ -318,7 +341,14 @@ def inject_late_settlement(db, key: str) -> list[str]:
         )
     tid = scenario_transaction_id(key)
     event = build_late_settlement_event(tid, scenario_start(key))
-    result = ingest_events(db, tid, [PaymentEventIn(**event)])
+    try:
+        payload = PaymentEventIn(**event)
+    except ValidationError as exc:
+        raise DemoFixtureInvalidError(
+            f"late-settlement fixture for {key} failed ingestion "
+            f"validation: {exc}"
+        ) from exc
+    result = ingest_events(db, tid, [payload])
     actions = [
         "late_settlement_ingested(created={created}, duplicates={duplicates})".format(
             created=result["created"], duplicates=result["duplicates"]

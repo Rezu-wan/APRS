@@ -377,6 +377,34 @@ def execute_recovery(
         decision.risk_assessment_id,
     )
 
+    # lifecycle pre-check — a release must never reach the provider from a
+    # state the state machine would refuse to move to LIMIT_RELEASED
+    # (terminal: SUCCESS / LIMIT_RELEASED / RECOVERY_REJECTED). Failed here,
+    # the ledger and the transaction state stay reconciled.
+    try:
+        validate_transition(tx.current_state, TransactionState.LIMIT_RELEASED)
+    except InvalidStateTransitionError as exc:
+        row.status = STATUS_FAILED
+        row.failure_reason = f"state transition blocked: {exc.message}"
+        _twin_observation(
+            db,
+            tx,
+            EVENT_FAILED,
+            row.failure_reason,
+            {"recovery_id": row.recovery_id},
+        )
+        twin_events.append(EVENT_FAILED)
+        db.flush()
+        logger.info(
+            "recovery failed before provider call: transaction_id=%s "
+            "recovery_id=%s failure_reason=%s",
+            tx.transaction_id, row.recovery_id, row.failure_reason,
+        )
+        return row, {
+            "already_recovered": False,
+            "digital_twin_events": twin_events,
+        }
+
     provider.ensure_hold(str(tx.transaction_id), float(tx.amount), tx.currency)
     record_counter(METRICS_PROVIDER_CALLS_TOTAL)  # Stage 11G
     logger.info(

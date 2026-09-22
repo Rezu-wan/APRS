@@ -234,6 +234,22 @@ def test_prepare_unknown_scenario_is_404(client):
     assert resp.json()["error"]["code"] == "DEMO_SCENARIO_NOT_FOUND"
 
 
+def test_future_skewed_fixture_is_422_not_500(client, monkeypatch):
+    """A fixture base that violates ingestion's >24h future-skew guard
+    surfaces as 422 DEMO_FIXTURE_INVALID — never a 500."""
+    from datetime import timedelta
+
+    from api.services import demo_scenarios
+
+    monkeypatch.setattr(
+        demo_scenarios, "DEMO_BASE",
+        demo_scenarios.DEMO_BASE + timedelta(days=3650),
+    )
+    resp = client.post(PREPARE_URL.format(key="S1"), headers=ADMIN_KEY)
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "DEMO_FIXTURE_INVALID"
+
+
 # ---------------------------------------------------------------------------
 # reset after activity
 # ---------------------------------------------------------------------------

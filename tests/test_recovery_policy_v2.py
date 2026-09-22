@@ -140,6 +140,34 @@ def test_medium_risk_genuine_failure_is_eligible_if_policy_allows():
     assert decision.risk_level == "MEDIUM"
 
 
+def test_above_cap_amount_is_not_eligible():
+    """Hard autonomy cap (RECOVERY_MAX_AMOUNT): the R-A evidence shape above
+    the cap must NOT release — same rule as recovery_policy.evaluate_policy.
+    Regression: a 9,831.98 BDT above-cap dataset transaction was autonomously
+    released before this check existed."""
+    assessment, reconstruction = assess(failure_events())
+    decision = decide(
+        FakeTx(amount=9831.98), assessment, reconstruction, now=NOW
+    )
+    assert decision.eligible is False
+    assert decision.action == ACTION_NO_ACTION
+    assert decision.blocked_reason == BLOCK_NOT_ELIGIBLE
+    assert "auto-release cap" in decision.decision_reason
+
+
+def test_previous_failures_above_cap_is_not_eligible():
+    """Hard autonomy cap (RECOVERY_MAX_PREVIOUS_FAILURES): too many prior
+    failures block the R-A shape from an autonomous release."""
+    assessment, reconstruction = assess(failure_events())
+    decision = decide(
+        FakeTx(previous_failures=4), assessment, reconstruction, now=NOW
+    )
+    assert decision.eligible is False
+    assert decision.action == ACTION_NO_ACTION
+    assert decision.blocked_reason == BLOCK_NOT_ELIGIBLE
+    assert "previous_failures" in decision.decision_reason
+
+
 # ---------------------------------------------------------------------------
 # R-B — genuine failure, risk too high
 # ---------------------------------------------------------------------------

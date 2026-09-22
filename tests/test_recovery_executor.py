@@ -183,6 +183,32 @@ def test_release_limit_end_to_end(client):
     db.close()
 
 
+def test_illegal_transition_never_reaches_the_provider(client):
+    """Regression: a release must never land in the provider ledger from a
+    state the state machine refuses to move to LIMIT_RELEASED (terminal
+    RECOVERY_REJECTED). Before the lifecycle pre-check the provider released
+    the amount and the ledger stayed released while the transaction state
+    never changed — a permanent ledger/state divergence."""
+    tid = _unique_id()
+    db, tx, assessment, fingerprint, decision, provider = _prepare(client, tid)
+    assert decision.eligible and decision.action == "RELEASE_LIMIT"
+
+    tx.current_state = "RECOVERY_REJECTED"
+    now = datetime.now(timezone.utc)
+    row, info = execute_recovery(
+        db, tx, decision, assessment, fingerprint, provider, now=now
+    )
+    db.commit()
+
+    assert row.status == "FAILED"
+    assert "state transition blocked" in row.failure_reason
+    assert row.provider_reference is None
+    assert row.released_amount is None
+    assert _ledger(provider, tid) is None  # provider never called
+    assert tx.current_state == "RECOVERY_REJECTED"  # state untouched
+    db.close()
+
+
 def test_provider_timeout(client):
     tid = _unique_id()
     db, tx, assessment, fingerprint, decision, provider = _prepare(client, tid)
