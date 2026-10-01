@@ -1,0 +1,25 @@
+# secrets — never commit
+.env
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# local databases
+data/app.db
+data/test*.db
+*.sqlite3
+
+# logs
+*.log
+
+# tooling
+.claude/
+
+# OS noise
+.DS_Store
+Thumbs.db
