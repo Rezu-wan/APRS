@@ -1,0 +1,35 @@
+services:
+  api:
+    build: .
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-payment_app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-payment_recovery}
+      API_KEY_SYSTEM: ${API_KEY_SYSTEM:?set API_KEY_SYSTEM in .env (dev- keys are rejected in production)}
+      API_KEY_ADMIN: ${API_KEY_ADMIN:?set API_KEY_ADMIN in .env}
+      API_KEY_SUPPORT: ${API_KEY_SUPPORT:?set API_KEY_SUPPORT in .env}
+      API_KEY_CUSTOMER: ${API_KEY_CUSTOMER:?set API_KEY_CUSTOMER in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-payment_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-payment_recovery}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-payment_app} -d ${POSTGRES_DB:-payment_recovery}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+
+# Note: ML model files (models/*.joblib) are baked into the api image via
+# `COPY models/` in the Dockerfile -- no runtime volume/mount is needed.

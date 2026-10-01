@@ -1,0 +1,11 @@
+.env
+data/*.db
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+tests/
+scripts/
+reports/
+*.md
+.git
