@@ -1,0 +1,313 @@
+{
+  "meta": {
+    "data_path": "data/transactions.csv",
+    "n_rows": 25000,
+    "time_min": "2026-07-04 20:53:12",
+    "time_max": "2026-10-01 23:50:52",
+    "random_state": 42,
+    "test_size": 0.2,
+    "split_modes": [
+      "stratified",
+      "chronological"
+    ],
+    "versions": {
+      "scikit-learn": "1.9.1",
+      "xgboost": "3.4.1",
+      "pandas": "2.3.3",
+      "numpy": "2.4.6"
+    },
+    "trained_at": "2026-10-02T01:36:18"
+  },
+  "tasks": {
+    "failure": {
+      "target": "outcome (failure_reason + SUCCESS/STALLED)",
+      "features": [
+        "amount",
+        "gateway_latency_ms",
+        "retry_count",
+        "previous_failures",
+        "account_age_days",
+        "network_quality"
+      ],
+      "splits": {
+        "stratified": {
+          "accuracy": 0.7798,
+          "precision": 0.2074,
+          "recall": 0.2655,
+          "f1": 0.2228,
+          "precision_macro": 0.2074,
+          "recall_macro": 0.2655,
+          "f1_macro": 0.2228,
+          "f1_weighted": 0.8196,
+          "confusion_matrix": [
+            [
+              3766,
+              183,
+              176,
+              89,
+              28,
+              114,
+              100
+            ],
+            [
+              31,
+              69,
+              47,
+              6,
+              3,
+              7,
+              7
+            ],
+            [
+              22,
+              59,
+              44,
+              5,
+              2,
+              4,
+              9
+            ],
+            [
+              22,
+              13,
+              13,
+              5,
+              0,
+              3,
+              2
+            ],
+            [
+              17,
+              5,
+              4,
+              4,
+              0,
+              2,
+              2
+            ],
+            [
+              33,
+              8,
+              11,
+              3,
+              2,
+              9,
+              4
+            ],
+            [
+              18,
+              19,
+              17,
+              1,
+              3,
+              3,
+              6
+            ]
+          ],
+          "roc_auc_ovr_weighted": 0.8651,
+          "classification_report": "                      precision    recall  f1-score   support\n\n             SUCCESS       0.96      0.85      0.90      4456\n             STALLED       0.19      0.41      0.26       170\n             Timeout       0.14      0.30      0.19       145\n        Network Drop       0.04      0.09      0.06        58\n Merchant Disconnect       0.00      0.00      0.00        34\nInsufficient Balance       0.06      0.13      0.08        70\n       Gateway Error       0.05      0.09      0.06        67\n\n            accuracy                           0.78      5000\n           macro avg       0.21      0.27      0.22      5000\n        weighted avg       0.87      0.78      0.82      5000\n"
+        },
+        "chronological": {
+          "accuracy": 0.792,
+          "precision": 0.231,
+          "recall": 0.3003,
+          "f1": 0.2518,
+          "precision_macro": 0.231,
+          "recall_macro": 0.3003,
+          "f1_macro": 0.2518,
+          "f1_weighted": 0.8272,
+          "confusion_matrix": [
+            [
+              3795,
+              179,
+              145,
+              81,
+              34,
+              119,
+              89
+            ],
+            [
+              30,
+              84,
+              40,
+              8,
+              2,
+              8,
+              8
+            ],
+            [
+              16,
+              44,
+              53,
+              9,
+              3,
+              10,
+              16
+            ],
+            [
+              22,
+              16,
+              10,
+              5,
+              1,
+              4,
+              5
+            ],
+            [
+              12,
+              8,
+              3,
+              0,
+              1,
+              0,
+              0
+            ],
+            [
+              42,
+              4,
+              9,
+              1,
+              0,
+              15,
+              3
+            ],
+            [
+              23,
+              14,
+              12,
+              4,
+              1,
+              5,
+              7
+            ]
+          ],
+          "roc_auc_ovr_weighted": 0.8684,
+          "classification_report": "                      precision    recall  f1-score   support\n\n             SUCCESS       0.96      0.85      0.91      4442\n             STALLED       0.24      0.47      0.32       180\n             Timeout       0.19      0.35      0.25       151\n        Network Drop       0.05      0.08      0.06        63\n Merchant Disconnect       0.02      0.04      0.03        24\nInsufficient Balance       0.09      0.20      0.13        74\n       Gateway Error       0.05      0.11      0.07        66\n\n            accuracy                           0.79      5000\n           macro avg       0.23      0.30      0.25      5000\n        weighted avg       0.87      0.79      0.83      5000\n"
+        }
+      },
+      "feature_importance": {
+        "network_quality": 0.42017120122909546,
+        "gateway_latency_ms": 0.14099039137363434,
+        "retry_count": 0.11450177431106567,
+        "amount": 0.11328626424074173,
+        "account_age_days": 0.10876554995775223,
+        "previous_failures": 0.10228477418422699
+      }
+    },
+    "recovery": {
+      "target": "safe_to_release (1 = TRUE)",
+      "features": [
+        "amount",
+        "gateway_latency_ms",
+        "retry_count",
+        "previous_failures",
+        "account_age_days",
+        "network_quality",
+        "status",
+        "failure_reason"
+      ],
+      "splits": {
+        "stratified": {
+          "accuracy": 0.8922,
+          "precision": 0.9034,
+          "recall": 0.9375,
+          "f1": 0.9202,
+          "precision_macro": 0.8855,
+          "recall_macro": 0.8704,
+          "f1_macro": 0.8771,
+          "f1_weighted": 0.8911,
+          "confusion_matrix": [
+            [
+              1355,
+              332
+            ],
+            [
+              207,
+              3106
+            ]
+          ],
+          "roc_auc": 0.9361,
+          "pr_auc": 0.9553,
+          "classification_report": "              precision    recall  f1-score   support\n\n           0       0.87      0.80      0.83      1687\n           1       0.90      0.94      0.92      3313\n\n    accuracy                           0.89      5000\n   macro avg       0.89      0.87      0.88      5000\nweighted avg       0.89      0.89      0.89      5000\n"
+        },
+        "chronological": {
+          "accuracy": 0.888,
+          "precision": 0.9018,
+          "recall": 0.9328,
+          "f1": 0.917,
+          "precision_macro": 0.8798,
+          "recall_macro": 0.8663,
+          "f1_macro": 0.8724,
+          "f1_weighted": 0.887,
+          "confusion_matrix": [
+            [
+              1346,
+              337
+            ],
+            [
+              223,
+              3094
+            ]
+          ],
+          "roc_auc": 0.9367,
+          "pr_auc": 0.9583,
+          "classification_report": "              precision    recall  f1-score   support\n\n           0       0.86      0.80      0.83      1683\n           1       0.90      0.93      0.92      3317\n\n    accuracy                           0.89      5000\n   macro avg       0.88      0.87      0.87      5000\nweighted avg       0.89      0.89      0.89      5000\n"
+        }
+      },
+      "feature_importance": {
+        "status": 0.3744398970156908,
+        "network_quality": 0.20047564432024956,
+        "gateway_latency_ms": 0.1584279090166092,
+        "failure_reason": 0.08733161445707083,
+        "retry_count": 0.06631898880004883,
+        "previous_failures": 0.04900846630334854,
+        "amount": 0.04373948276042938,
+        "account_age_days": 0.020257962867617607
+      }
+    },
+    "risk": {
+      "target": "risk_score (regression, reference signal)",
+      "features": [
+        "amount",
+        "gateway_latency_ms",
+        "retry_count",
+        "previous_failures",
+        "account_age_days",
+        "network_quality",
+        "status",
+        "failure_reason"
+      ],
+      "splits": {
+        "stratified": {
+          "r2": 0.9022,
+          "mae": 0.067,
+          "rmse": 0.0924,
+          "mae_naive_mean_baseline": 0.2506
+        },
+        "chronological": {
+          "r2": 0.9017,
+          "mae": 0.0675,
+          "rmse": 0.0928,
+          "mae_naive_mean_baseline": 0.2508
+        }
+      },
+      "feature_importance": {
+        "status": 0.538354329764843,
+        "gateway_latency_ms": 0.18523479998111725,
+        "network_quality": 0.13164864666759968,
+        "retry_count": 0.054827649146318436,
+        "previous_failures": 0.03211769461631775,
+        "amount": 0.02929649129509926,
+        "failure_reason": 0.02316297171637416,
+        "account_age_days": 0.00535753695294261
+      }
+    }
+  },
+  "leakage_diagnostic": {
+    "note": "DIAGNOSTIC ONLY \u2014 this variant is NOT saved; risk_score is banned from Task 2 features because Stage 1 created safe_to_release by thresholding risk_score.",
+    "accuracy_with_risk_score": 0.9674,
+    "accuracy_clean_pipeline": 0.8922,
+    "f1_macro_with_risk_score": 0.9633,
+    "f1_macro_clean_pipeline": 0.8771
+  }
+}
