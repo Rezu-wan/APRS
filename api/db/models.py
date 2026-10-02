@@ -8,6 +8,9 @@ recovery_decisions   one immutable decision row per transaction (UNIQUE
                      transaction_id) — this constraint is what makes
                      /recovery/release-limit idempotent, including under
                      concurrent duplicate requests
+ai_explanations      derived GenAI explanation cache (NON-AUTHORITATIVE) —
+                     never part of the decision path; the only table the
+                     explanation layer writes
 
 Timestamps are timezone-aware UTC. UUIDs are stored as 36-char strings for
 portability across PostgreSQL and SQLite.
@@ -143,3 +146,31 @@ class RecoveryDecision(Base):
     policy_snapshot: Mapped[dict] = mapped_column(JSON)
 
     transaction: Mapped[Transaction] = relationship(back_populates="recovery_decision")
+
+
+class AIExplanation(Base):
+    """Generated GenAI explanation cache. DERIVED, NON-AUTHORITATIVE data:
+    never part of the decision path, never a substitute for the Digital Twin
+    log. Multiple rows per transaction are kept (history); the latest row
+    matching (transaction, language, audience, context_fingerprint) is reused."""
+
+    __tablename__ = "ai_explanations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    explanation_id: Mapped[str] = mapped_column(
+        String(36), unique=True, default=new_event_id, index=True
+    )
+    transaction_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("transactions.transaction_id"), index=True
+    )
+    language: Mapped[str] = mapped_column(String(2))
+    audience: Mapped[str] = mapped_column(String(16))
+    provider: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(8))
+    explanation: Mapped[str] = mapped_column(Text)
+    is_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
+    context_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    transaction: Mapped[Transaction] = relationship()
