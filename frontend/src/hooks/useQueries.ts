@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   getReconstruction,
+  getRecovery,
   getRiskAssessment,
   getStats,
   getTimeline,
@@ -14,6 +15,7 @@ export const queryKeys = {
   timeline: (id: string) => ["timeline", id] as const,
   reconstruction: (id: string) => ["reconstruction", id] as const,
   riskAssessment: (id: string) => ["risk-assessment", id] as const,
+  recovery: (id: string) => ["recovery", id] as const,
 };
 
 export function useStats() {
@@ -51,6 +53,15 @@ export function useRiskAssessment(id: string) {
   return useQuery({
     queryKey: queryKeys.riskAssessment(id),
     queryFn: () => getRiskAssessment(id),
+    enabled: id.length > 0,
+  });
+}
+
+/** GET …/recovery — 404 already mapped to null by the API layer. */
+export function useRecovery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.recovery(id),
+    queryFn: () => getRecovery(id),
     enabled: id.length > 0,
   });
 }

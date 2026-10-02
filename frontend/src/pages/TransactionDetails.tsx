@@ -9,6 +9,7 @@ import { TransactionSummary, formatAmount } from "../components/transaction/Tran
 import { RiskIndicator } from "../components/recovery/RiskIndicator";
 import { RecoveryCard } from "../components/recovery/RecoveryCard";
 import { ReconstructionPanel } from "../components/reconstruction/ReconstructionPanel";
+import { AutonomousRecoveryPanel } from "../components/recovery/AutonomousRecoveryPanel";
 import { RiskAssessmentPanel } from "../components/risk/RiskAssessmentPanel";
 import { Timeline } from "../components/timeline/Timeline";
 import { ExplanationCard } from "../components/explanation/ExplanationCard";
@@ -139,6 +140,7 @@ export default function TransactionDetails() {
 
       {/* Hybrid risk assessment — all roles; CUSTOMER gets a muted 403 line */}
       <RiskAssessmentPanel transactionId={transaction.transaction_id} />
+      <AutonomousRecoveryPanel transactionId={transaction.transaction_id} />
 
       {/* Timeline — full width */}
       <section aria-labelledby="timeline-heading">

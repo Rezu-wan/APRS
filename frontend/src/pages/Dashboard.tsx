@@ -253,6 +253,43 @@ export default function Dashboard() {
         </section>
       )}
 
+      {/* Additive Stage 8 block — sandbox recovery metrics, only when provided */}
+      {data.autonomous_recovery && (
+        <section aria-labelledby="autonomous-recovery-stats-heading">
+          <h2 id="autonomous-recovery-stats-heading" className="text-sm font-semibold text-slate-900">
+            Autonomous recovery (sandbox)
+          </h2>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center gap-x-10 gap-y-3">
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Attempts</h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                  {data.autonomous_recovery.attempts.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Verified</h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700">
+                  {data.autonomous_recovery.verified.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Blocked</h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-700">
+                  {data.autonomous_recovery.blocked.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Failed</h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-red-600">
+                  {data.autonomous_recovery.failed.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-xs font-medium uppercase tracking-wide text-slate-500">

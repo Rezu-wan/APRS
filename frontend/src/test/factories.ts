@@ -234,3 +234,52 @@ export function makeRiskAssessmentResponse(
     ...overrides,
   };
 }
+
+
+/** Stage 8: a VERIFIED autonomous recovery record (defaults) — override status
+ * to exercise blocked/failed panel states. */
+export function makeRecovery(
+  overrides: Partial<import("../types/api").RecoveryRecord> = {}
+): import("../types/api").RecoveryRecord {
+  return {
+    transaction_id: "TXN-RECOVERY-1",
+    action: "RELEASE_LIMIT",
+    status: "VERIFIED",
+    recovery_id: "d5f2a1b0-0000-4000-8000-000000000001",
+    decision_reason: "Genuine failure with confirmed debit and no settlement.",
+    blocked_reason: null,
+    failure_reason: null,
+    requested_amount: "30.00",
+    released_amount: "30.00",
+    currency: "BDT",
+    provider: "mock",
+    provider_reference: "REL-A1B2C3D4",
+    policy_version: "autonomous-v1",
+    created_at: iso(2),
+    verified_at: iso(3),
+    simulated: true,
+    ...overrides,
+  };
+}
+
+export function makeRecoveryOutcome(
+  overrides: Partial<import("../types/api").RecoveryOutcome> = {}
+): import("../types/api").RecoveryOutcome {
+  return {
+    transaction_id: "TXN-RECOVERY-1",
+    decision: "AUTO_RECOVERED",
+    action: "RELEASE_LIMIT",
+    status: "VERIFIED",
+    recovery_id: "d5f2a1b0-0000-4000-8000-000000000001",
+    provider_reference: "REL-A1B2C3D4",
+    reason: "Genuine failure with confirmed debit and no settlement.",
+    simulated: true,
+    assessment: {
+      anomaly_type: "GENUINE_FAILURE",
+      risk_level: "LOW",
+      recovery_candidate: true,
+    },
+    digital_twin_recorded: true,
+    ...overrides,
+  };
+}

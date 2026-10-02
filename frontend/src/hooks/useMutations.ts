@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { releaseLimit } from "../api/recovery";
 import { requestExplanation } from "../api/explanations";
-import { runRiskAssessment } from "../api/transactions";
+import { processRecovery, runRiskAssessment } from "../api/transactions";
 import { queryKeys } from "./useQueries";
 import type { Audience, Language } from "../types/api";
 
@@ -17,6 +17,26 @@ export function useReleaseLimit(id: string) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.transaction(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.timeline(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.stats });
+    },
+  });
+}
+
+/**
+ * Run the autonomous recovery engine for a transaction (simulated sandbox —
+ * no real money moves). Never optimistic — the panel reflects the result only
+ * after the backend responds. Processing can transition the transaction's
+ * state and produce a fresh risk assessment, so all related caches refresh.
+ */
+export function useProcessRecovery(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => processRecovery(id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.recovery(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.timeline(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.transaction(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.stats });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.riskAssessment(id) });
     },
   });
 }
