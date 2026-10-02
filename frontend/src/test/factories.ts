@@ -258,6 +258,10 @@ export function makeRecovery(
     created_at: iso(2),
     verified_at: iso(3),
     simulated: true,
+    idempotency_key: "a".repeat(64),
+    risk_assessment_id: "ASSESS-1",
+    executor_version: "v1",
+    verifier_version: "v1",
     ...overrides,
   };
 }

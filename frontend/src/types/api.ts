@@ -470,6 +470,9 @@ export interface RecoveryEvaluateResult {
   assessment: RecoveryAssessmentSummary;
 }
 
+/** Server correlation id (Stage 9) — also attached to ApiError instances. */
+export type RequestId = string;
+
 /** GET …/recovery — 404 maps to null in the API layer when no recovery exists. */
 export interface RecoveryRecord {
   transaction_id: string;
@@ -488,6 +491,11 @@ export interface RecoveryRecord {
   created_at: string;
   verified_at: string | null;
   simulated: boolean;
+  // Additive Stage 9 auditability block — absent from older backends.
+  idempotency_key?: string | null;
+  risk_assessment_id?: string | null;
+  executor_version?: string | null;
+  verifier_version?: string | null;
 }
 
 export interface AutonomousRecoveryStats {
@@ -571,6 +579,11 @@ export const recoveryRecordSchema = z.object({
   created_at: z.string(),
   verified_at: z.string().nullable(),
   simulated: z.literal(true),
+  // Additive Stage 9 auditability block — optional so older backends still parse.
+  idempotency_key: z.string().nullable().optional(),
+  risk_assessment_id: z.string().nullable().optional(),
+  executor_version: z.string().nullable().optional(),
+  verifier_version: z.string().nullable().optional(),
 });
 
 /**
