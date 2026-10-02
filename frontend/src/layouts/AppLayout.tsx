@@ -1,18 +1,24 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
+  Activity,
+  FlaskConical,
   Info,
   LayoutDashboard,
   LogOut,
   Menu,
+  Presentation,
   RefreshCcw,
   X,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { JudgeModeProvider, useJudgeMode } from "../context/JudgeModeContext";
 
 const NAV_ITEMS = [
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/transactions", label: "Transactions", icon: RefreshCcw },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, staffOnly: false },
+  { to: "/transactions", label: "Transactions", icon: RefreshCcw, staffOnly: false },
+  { to: "/demo", label: "Demo", icon: FlaskConical, staffOnly: true },
+  { to: "/status", label: "Status", icon: Activity, staffOnly: true },
 ];
 
 const ROLE_CHIP_STYLES: Record<string, string> = {
@@ -22,14 +28,79 @@ const ROLE_CHIP_STYLES: Record<string, string> = {
   CUSTOMER: "bg-slate-100 text-slate-600 ring-slate-500/20",
 };
 
+/** Slim always-visible sandbox disclaimer strip (staff AND customers). */
+function SandboxBanner() {
+  return (
+    <div
+      data-testid="sandbox-banner"
+      role="note"
+      className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs font-semibold tracking-wide text-amber-800 sm:px-6"
+    >
+      SIMULATED SANDBOX — NO REAL MONEY MOVES
+    </div>
+  );
+}
+
+function JudgeModeToggle() {
+  const { judgeMode, toggle } = useJudgeMode();
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-pressed={judgeMode}
+      title="Presentation mode: enlarges key status displays"
+      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+        judgeMode
+          ? "bg-indigo-100 text-indigo-700"
+          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+      }`}
+    >
+      <Presentation aria-hidden="true" className="h-4 w-4" />
+      <span className="hidden lg:inline">Judge mode</span>
+    </button>
+  );
+}
+
 export function AppLayout() {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   if (!user) return null; // ProtectedRoute guarantees a user; narrow for TS.
 
+  const isStaff = user.role !== "CUSTOMER";
+
   return (
-    <div className="min-h-screen bg-slate-50">
+    <JudgeModeProvider>
+      <LayoutShell
+        isStaff={isStaff}
+        role={user.role}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+        logout={logout}
+      />
+    </JudgeModeProvider>
+  );
+}
+
+function LayoutShell({
+  isStaff,
+  role,
+  mobileOpen,
+  setMobileOpen,
+  logout,
+}: {
+  isStaff: boolean;
+  role: string;
+  mobileOpen: boolean;
+  setMobileOpen: (updater: (open: boolean) => boolean) => void;
+  logout: () => void;
+}) {
+  const { judgeMode } = useJudgeMode();
+  const navItems = NAV_ITEMS.filter((item) => !item.staffOnly || isStaff);
+
+  return (
+    <div className={`min-h-screen bg-slate-50${judgeMode ? " judge-mode" : ""}`}>
+      <SandboxBanner />
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <div className="flex items-center gap-3">
@@ -53,7 +124,7 @@ export function AppLayout() {
 
           <nav aria-label="Main navigation" className="hidden md:block">
             <ul className="flex items-center gap-1">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+              {navItems.map(({ to, label, icon: Icon }) => (
                 <li key={to}>
                   <NavLink
                     to={to}
@@ -74,12 +145,13 @@ export function AppLayout() {
           </nav>
 
           <div className="flex items-center gap-3">
+            {isStaff && <JudgeModeToggle />}
             <span
               className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                ROLE_CHIP_STYLES[user.role] ?? ROLE_CHIP_STYLES.CUSTOMER
+                ROLE_CHIP_STYLES[role] ?? ROLE_CHIP_STYLES.CUSTOMER
               }`}
             >
-              {user.role}
+              {role}
             </span>
             <button
               type="button"
@@ -96,11 +168,11 @@ export function AppLayout() {
         {mobileOpen && (
           <nav aria-label="Mobile navigation" className="border-t border-slate-200 md:hidden">
             <ul className="space-y-1 px-4 py-3">
-              {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+              {navItems.map(({ to, label, icon: Icon }) => (
                 <li key={to}>
                   <NavLink
                     to={to}
-                    onClick={() => setMobileOpen(false)}
+                    onClick={() => setMobileOpen((open) => !open)}
                     className={({ isActive }) =>
                       `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                         isActive
@@ -120,7 +192,7 @@ export function AppLayout() {
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        {user.role === "CUSTOMER" && <CustomerBanner />}
+        {role === "CUSTOMER" && <CustomerBanner />}
         <Outlet />
       </main>
     </div>

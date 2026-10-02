@@ -16,6 +16,10 @@ export const queryKeys = {
   reconstruction: (id: string) => ["reconstruction", id] as const,
   riskAssessment: (id: string) => ["risk-assessment", id] as const,
   recovery: (id: string) => ["recovery", id] as const,
+  // Stage 10 demo control (see hooks/useDemo.ts)
+  demoScenarios: ["demo", "scenarios"] as const,
+  demoStatus: ["demo", "status"] as const,
+  sandboxLedger: ["sandbox", "ledger"] as const,
 };
 
 export function useStats() {

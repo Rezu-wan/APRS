@@ -5,3 +5,25 @@
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
 }
+
+/*
+ * Judge ("presentation") mode — Stage 10.
+ * FE components opt in via the class names below; the AppLayout root div gets
+ * `.judge-mode` when the toggle is on.
+ */
+.judge-mode h1 {
+  font-size: 1.5rem;
+}
+.judge-mode h2 {
+  font-size: 1.25rem;
+}
+.judge-mode .judge-enlarge {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.judge-mode .judge-hide {
+  display: none !important;
+}
+/* Outside judge mode these hooks are inert; `.judge-hide` only hides during
+ * presentation so the element stays available for normal use. */
+

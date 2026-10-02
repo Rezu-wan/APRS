@@ -42,6 +42,70 @@ function topAnomalyTypes(
 
 const percentFormat = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 0 });
 
+/** §27 — "How it works" pipeline, one honest sentence per stage. */
+const HOW_IT_WORKS = [
+  ["EVENTS", "Every provider event is captured as an immutable payment-event record."],
+  ["DIGITAL TWIN", "The twin log replays the transaction's authoritative history."],
+  ["RECONSTRUCTION", "A deterministic engine derives what actually happened, stage by stage."],
+  ["RISK", "A hybrid engine combines deterministic evidence rules with an ML anomaly signal."],
+  ["POLICY", "A conservative policy decides whether autonomous recovery is permitted."],
+  ["SAFETY", "An independent gate re-checks FRESH evidence immediately before execution."],
+  ["RECOVERY", "An idempotent executor releases limits on a simulated sandbox provider."],
+  ["VERIFICATION", "Post-execution verification must pass before recovery is called complete."],
+] as const;
+
+function Hero() {
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+            AI Transaction Digital Twin
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-600">
+            Autonomous recovery for failed or stalled payment transactions — with evidence, safety
+            gates and post-execution verification.
+          </p>
+        </div>
+        <span className="inline-flex shrink-0 items-center self-start rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-amber-800 ring-1 ring-inset ring-amber-600/20">
+          SIMULATED SANDBOX — NO REAL MONEY MOVES
+        </span>
+      </div>
+    </section>
+  );
+}
+
+function HowItWorks() {
+  return (
+    <section aria-labelledby="how-it-works-heading">
+      <h2 id="how-it-works-heading" className="text-sm font-semibold text-slate-900">
+        How it works
+      </h2>
+      <ol className="mt-3 space-y-2">
+        {HOW_IT_WORKS.map(([name, description], index) => (
+          <li
+            key={name}
+            className="flex items-start gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <span
+              aria-hidden="true"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-semibold text-indigo-700"
+            >
+              {index + 1}
+            </span>
+            <div className="min-w-0">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-800">
+                {name}
+              </span>
+              <p className="text-sm text-slate-600">{description}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
 function QuickSearch() {
   const [value, setValue] = useState("");
   const navigate = useNavigate();
@@ -55,7 +119,7 @@ function QuickSearch() {
   }
 
   return (
-    <form onSubmit={handleSubmit} role="search" className="w-full max-w-md">
+    <form onSubmit={handleSubmit} role="search" className="judge-hide w-full max-w-md">
       <label htmlFor="dashboard-quick-search" className="sr-only">
         Look up a transaction by ID
       </label>
@@ -197,6 +261,68 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <Hero />
+
+      {/* Headline metrics — real data only; each metric renders only when its
+          source field exists in the stats payload (zero fabrication). */}
+      <section aria-labelledby="headline-metrics-heading">
+        <h2 id="headline-metrics-heading" className="sr-only">
+          Headline metrics
+        </h2>
+        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Transactions
+            </dt>
+            <dd className="judge-enlarge mt-1 text-xl font-semibold tabular-nums text-slate-900">
+              {data.total.toLocaleString()}
+            </dd>
+          </div>
+          {data.risk_assessments && (
+            <>
+              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Risk assessments
+                </dt>
+                <dd className="judge-enlarge mt-1 text-xl font-semibold tabular-nums text-slate-900">
+                  {data.risk_assessments.total.toLocaleString()}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Recovery candidates
+                </dt>
+                <dd className="judge-enlarge mt-1 text-xl font-semibold tabular-nums text-slate-900">
+                  {data.risk_assessments.recovery_candidates.toLocaleString()}
+                </dd>
+              </div>
+            </>
+          )}
+          {data.autonomous_recovery && (
+            <>
+              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Verified recoveries
+                </dt>
+                <dd className="judge-enlarge mt-1 text-xl font-semibold tabular-nums text-emerald-700">
+                  {data.autonomous_recovery.verified.toLocaleString()}
+                </dd>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Blocked recoveries
+                </dt>
+                <dd className="judge-enlarge mt-1 text-xl font-semibold tabular-nums text-slate-700">
+                  {data.autonomous_recovery.blocked.toLocaleString()}
+                </dd>
+              </div>
+            </>
+          )}
+        </dl>
+      </section>
+
+      <HowItWorks />
+
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <h1 className="text-lg font-semibold text-slate-900">Platform overview</h1>
         <QuickSearch />
