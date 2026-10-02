@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session
 
 from api.core.security import require_roles
 from api.db.database import get_db
-from api.db.models import RecoveryDecision, RiskAssessmentRecord, Transaction
+from api.db.models import (
+    RecoveryActionRecord,
+    RecoveryDecision,
+    RiskAssessmentRecord,
+    Transaction,
+)
 
 logger = logging.getLogger("payment_recovery.stats")
 
@@ -31,11 +36,25 @@ class RiskAssessmentStats(BaseModel):
     recovery_candidates: int
 
 
+class AutonomousRecoveryStats(BaseModel):
+    """Stage 8 recovery_actions counts: attempts = all rows (every persisted
+    attempt, including BLOCKED ones); completed = COMPLETED + VERIFIED;
+    blocked = BLOCKED; failed = FAILED; verified = VERIFIED (subset of
+    completed)."""
+
+    attempts: int
+    completed: int
+    blocked: int
+    failed: int
+    verified: int
+
+
 class StatsSummary(BaseModel):
     total: int
     by_state: dict[str, int]
     decisions: dict[str, int]
     risk_assessments: RiskAssessmentStats
+    autonomous_recovery: AutonomousRecoveryStats
 
 
 @router.get("/summary", response_model=StatsSummary)
@@ -81,6 +100,23 @@ def stats_summary(
         select(func.count()).where(RiskAssessmentRecord.recovery_candidate.is_(True))
     ) or 0
 
+    status_rows = db.execute(
+        select(RecoveryActionRecord.status, func.count()).group_by(
+            RecoveryActionRecord.status
+        )
+    ).all()
+    recovery_by_status = {status: count for status, count in status_rows}
+    autonomous_recovery = AutonomousRecoveryStats(
+        attempts=sum(recovery_by_status.values()),
+        completed=(
+            recovery_by_status.get("COMPLETED", 0)
+            + recovery_by_status.get("VERIFIED", 0)
+        ),
+        blocked=recovery_by_status.get("BLOCKED", 0),
+        failed=recovery_by_status.get("FAILED", 0),
+        verified=recovery_by_status.get("VERIFIED", 0),
+    )
+
     logger.debug(
         "stats summary: total=%d states=%d decision_kinds=%d assessments=%d",
         total, len(by_state), len(observed_decisions), sum(by_anomaly_type.values()),
@@ -95,4 +131,5 @@ def stats_summary(
             by_risk_level=by_risk_level,
             recovery_candidates=recovery_candidates,
         ),
+        autonomous_recovery=autonomous_recovery,
     )
