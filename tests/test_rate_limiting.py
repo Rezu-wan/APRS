@@ -68,6 +68,7 @@ class TestBucketSelection:
             "risk": 30,
             "payment-events": 60,
             "auth": 60,
+            "demo": 60,  # Stage 10: demo-control endpoints
         }
         limits = {name: limit for name, _, limit in RATE_LIMITS}
         assert limits == expected

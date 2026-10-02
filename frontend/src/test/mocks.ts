@@ -29,12 +29,28 @@ vi.mock("../api/explanations", () => ({
   requestExplanation: vi.fn(),
 }));
 
+vi.mock("../api/demo", async (importOriginal) => {
+  // Keep the display-only helpers (humanizeBlockedReason) real — only the
+  // network functions are mocked.
+  const actual = await importOriginal<typeof import("../api/demo")>();
+  return {
+    ...actual,
+    getDemoScenarios: vi.fn(),
+    getDemoStatus: vi.fn(),
+    getSandboxLedger: vi.fn(),
+    prepareScenario: vi.fn(),
+    injectLateSettlement: vi.fn(),
+    resetDemo: vi.fn(),
+  };
+});
+
 // The vi.mock calls above are hoisted before these dynamic imports, so each
 // awaited module is the mocked one — the exported handles ARE the mock fns.
 const authMod = await import("../api/auth");
 const transactionsMod = await import("../api/transactions");
 const recoveryMod = await import("../api/recovery");
 const explanationsMod = await import("../api/explanations");
+const demoMod = await import("../api/demo");
 
 export const mockGetMe = vi.mocked(authMod.getMe) as unknown as {
   (apiKey?: string): Promise<MeResponse>;
@@ -168,6 +184,69 @@ export const mockRequestExplanation = vi.mocked(
 };
 
 // ---------------------------------------------------------------------------
+// Stage 10 demo-control mocks (src/api/demo.ts)
+// ---------------------------------------------------------------------------
+
+export const mockGetDemoScenarios = vi.mocked(demoMod.getDemoScenarios) as unknown as {
+  (): Promise<import("../api/demo").DemoScenariosResponse>;
+  mockResolvedValue: (v: import("../api/demo").DemoScenariosResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<import("../api/demo").DemoScenariosResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetDemoStatus = vi.mocked(demoMod.getDemoStatus) as unknown as {
+  (): Promise<import("../api/demo").DemoStatusResponse>;
+  mockResolvedValue: (v: import("../api/demo").DemoStatusResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<import("../api/demo").DemoStatusResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetSandboxLedger = vi.mocked(demoMod.getSandboxLedger) as unknown as {
+  (): Promise<import("../api/demo").SandboxLedgerResponse>;
+  mockResolvedValue: (v: import("../api/demo").SandboxLedgerResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<import("../api/demo").SandboxLedgerResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockPrepareScenario = vi.mocked(demoMod.prepareScenario) as unknown as {
+  (key: string): Promise<import("../api/demo").DemoPrepareResponse>;
+  mockResolvedValue: (v: import("../api/demo").DemoPrepareResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockInjectLateSettlement = vi.mocked(
+  demoMod.injectLateSettlement
+) as unknown as {
+  (key: string): Promise<import("../api/demo").DemoPrepareResponse>;
+  mockResolvedValue: (v: import("../api/demo").DemoPrepareResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockResetDemo = vi.mocked(demoMod.resetDemo) as unknown as {
+  (): Promise<import("../api/demo").DemoResetResponse>;
+  mockResolvedValue: (v: import("../api/demo").DemoResetResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -207,6 +286,50 @@ function defaultProcessRecovery(): Promise<import("../types/api").RecoveryOutcom
   return Promise.reject(new ApiError(500, "UNKNOWN", "processRecovery not stubbed"));
 }
 
+// Stage 10 demo defaults — pages must handle an empty scenario list, and the
+// console renders the shape below when no test overrides it.
+function defaultDemoScenarios(): Promise<import("../api/demo").DemoScenariosResponse> {
+  return Promise.resolve({ simulated: true, scenarios: [] });
+}
+
+function defaultDemoStatus(): Promise<import("../api/demo").DemoStatusResponse> {
+  return Promise.resolve({
+    database: "connected",
+    ml_models: "loaded",
+    genai: { provider: "mock", status: "available", prompt_version: "v4" },
+    sandbox_provider: {
+      provider: "mock",
+      initial_limit: 10000,
+      available_limit: 10000,
+      currency: "BDT",
+      held_entries: 0,
+      released_entries: 0,
+    },
+  });
+}
+
+function defaultSandboxLedger(): Promise<import("../api/demo").SandboxLedgerResponse> {
+  return Promise.resolve({
+    simulated: true,
+    initial_limit: 10000,
+    available_limit: 10000,
+    currency: "BDT",
+    entries: [],
+  });
+}
+
+function defaultPrepareScenario(): Promise<import("../api/demo").DemoPrepareResponse> {
+  return Promise.reject(new ApiError(500, "UNKNOWN", "prepareScenario not stubbed"));
+}
+
+function defaultInjectLateSettlement(): Promise<import("../api/demo").DemoPrepareResponse> {
+  return Promise.reject(new ApiError(500, "UNKNOWN", "injectLateSettlement not stubbed"));
+}
+
+function defaultResetDemo(): Promise<import("../api/demo").DemoResetResponse> {
+  return Promise.reject(new ApiError(500, "UNKNOWN", "resetDemo not stubbed"));
+}
+
 /** A promise that never settles — used to hold requests in-flight. */
 export function neverPromise<T>(): Promise<T> {
   return new Promise<T>(() => {});
@@ -231,4 +354,16 @@ export function resetApiMocks(): void {
   mockProcessRecovery.mockImplementation(defaultProcessRecovery as never);
   mockReleaseLimit.mockReset();
   mockRequestExplanation.mockReset();
+  mockGetDemoScenarios.mockReset();
+  mockGetDemoScenarios.mockImplementation(defaultDemoScenarios as never);
+  mockGetDemoStatus.mockReset();
+  mockGetDemoStatus.mockImplementation(defaultDemoStatus as never);
+  mockGetSandboxLedger.mockReset();
+  mockGetSandboxLedger.mockImplementation(defaultSandboxLedger as never);
+  mockPrepareScenario.mockReset();
+  mockPrepareScenario.mockImplementation(defaultPrepareScenario as never);
+  mockInjectLateSettlement.mockReset();
+  mockInjectLateSettlement.mockImplementation(defaultInjectLateSettlement as never);
+  mockResetDemo.mockReset();
+  mockResetDemo.mockImplementation(defaultResetDemo as never);
 }

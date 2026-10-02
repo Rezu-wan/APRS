@@ -31,6 +31,7 @@ from api.db.database import engine
 from api.routes import (
     auth,
     autonomous_recovery,
+    demo,
     explanations,
     payment_events,
     recovery,
@@ -98,6 +99,7 @@ app.include_router(risk_assessment.router)
 app.include_router(autonomous_recovery.router)
 app.include_router(sandbox.sandbox_router)
 app.include_router(sandbox.audit_router)
+app.include_router(demo.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware

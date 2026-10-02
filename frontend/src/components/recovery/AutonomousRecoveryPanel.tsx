@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ApiError } from "../../api/client";
+import { humanizeBlockedReason } from "../../api/demo";
 import { useRecovery } from "../../hooks/useQueries";
 import { useProcessRecovery } from "../../hooks/useMutations";
 import { useAuth } from "../../context/AuthContext";
@@ -226,9 +227,33 @@ function RecoveryBody({ record }: { record: import("../../types/api").RecoveryRe
         </div>
       )}
       {record.blocked_reason && (
-        <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
-          <span className="font-medium">Blocked:</span> {record.blocked_reason}
-        </p>
+        <div className="rounded-md border border-red-100 bg-red-50/50 px-3 py-3" data-testid="recovery-blocked-block">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-red-700">
+            RECOVERY BLOCKED
+          </h3>
+          <dl className="mt-2 space-y-1.5 text-sm">
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+              <dt className="w-20 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500 sm:pt-0.5">
+                Reason
+              </dt>
+              <dd className="text-slate-800">{humanizeBlockedReason(record.blocked_reason)}</dd>
+            </div>
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+              <dt className="w-20 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500 sm:pt-0.5">
+                Action
+              </dt>
+              <dd className="text-slate-800">{humanizeRecoveryAction(record.action)}</dd>
+            </div>
+            <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+              <dt className="w-20 shrink-0 text-xs font-medium uppercase tracking-wide text-slate-500 sm:pt-0.5">
+                Provider
+              </dt>
+              <dd className="font-mono text-slate-800">
+                {record.provider_reference ?? "NOT CALLED"}
+              </dd>
+            </div>
+          </dl>
+        </div>
       )}
       {record.failure_reason && (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -253,6 +278,15 @@ function RecoveryBody({ record }: { record: import("../../types/api").RecoveryRe
           </p>
         )}
       </div>
+
+      {/* §16 concern separation — the decision is deterministic; AI only explains. */}
+      <p
+        className="text-xs text-slate-500"
+        data-testid="deterministic-decision-line"
+      >
+        Deterministic recovery decision — policy {record.policy_version}. No AI involvement in the
+        decision.
+      </p>
 
       {/* Footer */}
       <p className="border-t border-slate-100 pt-3 text-xs text-slate-500">

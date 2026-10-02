@@ -36,6 +36,7 @@ AUDIT_PAYMENT_EVENT_CONFLICT = "PAYMENT_EVENT_CONFLICT"  # 409 on event redelive
 AUDIT_PAYMENT_EVENT_REJECTED = "PAYMENT_EVENT_REJECTED"  # event batch failed validation
 AUDIT_FORBIDDEN = "FORBIDDEN"                        # authenticated but role not allowed
 AUDIT_DEMO_RESET = "DEMO_RESET"                      # sandbox ledger reset
+AUDIT_DEMO_SEED = "DEMO_SEED"                        # Stage 10 demo scenario prepare/inject
 AUDIT_RECOVERY_PROCESS = "RECOVERY_PROCESS"          # non-SYSTEM-triggered autonomous recovery
 
 _RESULT_ALLOWED = "ALLOWED"

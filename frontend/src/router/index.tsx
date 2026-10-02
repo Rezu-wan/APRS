@@ -9,6 +9,8 @@ import { NotFound } from "../pages/NotFound";
 const Dashboard = lazy(() => import("../pages/Dashboard"));
 const TransactionSearch = lazy(() => import("../pages/TransactionSearch"));
 const TransactionDetails = lazy(() => import("../pages/TransactionDetails"));
+const DemoMode = lazy(() => import("../pages/DemoMode"));
+const SystemStatus = lazy(() => import("../pages/SystemStatus"));
 
 function LazyPage({ children }: { children: ReactNode }) {
   return (
@@ -49,6 +51,22 @@ export function AppRoutes() {
           element={
             <LazyPage>
               <TransactionDetails />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="/demo"
+          element={
+            <LazyPage>
+              <DemoMode />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="/status"
+          element={
+            <LazyPage>
+              <SystemStatus />
             </LazyPage>
           }
         />

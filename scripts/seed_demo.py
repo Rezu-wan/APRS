@@ -10,7 +10,10 @@ with fixed timestamps, mirroring the Stage 8 E2E builders:
   S2  double_deduction chain  -> blocked (DOUBLE_DEDUCTION)
   S3  success (happy path)    -> blocked (ALREADY_SUCCESS)
   S4  single debit only       -> blocked (INSUFFICIENT_EVIDENCE)
-  S5  clean-failed fixture, no events -> policy needs evidence; blocked
+  S5  merchant_timeout chain + risk assessment -> Stage 10 race scenario:
+      the presenter then injects a LATE settlement via
+      POST /api/v1/demo/scenarios/S5/inject-late-settlement and the real
+      recovery/process is blocked by the fresh-evidence safety gate
   S6  merchant_timeout chain  -> duplicate-process demo (S1's twin)
 
 Idempotent by design:
@@ -20,6 +23,11 @@ Idempotent by design:
     duplicates)
   * risk assessment: fingerprint-reuse on the API side
   * recovery process: provider-level idempotency
+
+The deterministic fixture, timeline constants, scenario catalog, and the
+build_events() builder live in api/services/demo_scenarios.py (the shared
+source of truth with the Stage 10 demo API); this script imports them and
+keeps only the HTTP plumbing.
 
 Stdlib only. Style follows scripts/stage8_e2e.py.
 
@@ -36,106 +44,19 @@ import os
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from api.core.payment_lifecycle import (  # noqa: E402  (path fix above)
-    EVENT_TYPE_INFO,
-    HAPPY_PATH_EVENTS,
+from api.services.demo_scenarios import (  # noqa: E402  (path fix above)
+    DEMO_BASE,
+    SCENARIOS,
+    _CLEAN_FIXTURE,
+    build_events,
 )
 
 DEFAULT_API_URL = "http://127.0.0.1:8000"
 DEFAULT_API_KEY = "dev-admin-key"  # documented public dev placeholder
-
-# Fixed demo timeline — deterministic timestamps (spec §28): all events are
-# derived from this base, S<n> events starting at base + (n-1) minutes.
-DEMO_BASE = datetime(2026, 10, 3, 9, 0, 0, tzinfo=timezone.utc)
-
-BASE_LATENCY_MS = 120
-TERMINAL_EVENT_MS = 90
-MERCHANT_TIMEOUT_GAP_MS = 3_000
-GATEWAY_TIMEOUT_GAP_MS = 3_000
-DOUBLE_DEDUCTION_GAP_MS = 200
-
-_STEPS: dict[str, list[tuple[str, int]]] = {
-    "merchant_timeout": [
-        ("CUSTOMER_DEBIT_CONFIRMED", 0),
-        ("GATEWAY_REQUEST_SENT", 0),
-        ("GATEWAY_RESPONSE_RECEIVED", 0),
-        ("MERCHANT_CONFIRMATION_REQUESTED", 0),
-        ("MERCHANT_CONFIRMATION_TIMEOUT", MERCHANT_TIMEOUT_GAP_MS),
-    ],
-    "double_deduction": [
-        ("CUSTOMER_DEBIT_CONFIRMED", 0),
-        ("CUSTOMER_DEBIT_CONFIRMED", DOUBLE_DEDUCTION_GAP_MS),
-        ("GATEWAY_REQUEST_SENT", 0),
-        ("GATEWAY_TIMEOUT", GATEWAY_TIMEOUT_GAP_MS),
-    ],
-    "success": [(event_type, 0) for event_type in HAPPY_PATH_EVENTS],
-    "single_debit": [
-        ("CUSTOMER_DEBIT_CONFIRMED", 0),
-    ],
-    "none": [],
-}
-
-_CLEAN_FIXTURE = {
-    "user_id": "USER-DEMO",
-    "merchant_id": "MERCHANT-DEMO",
-    "amount": 1200.00,
-    "currency": "BDT",
-    "gateway_latency_ms": 2800,
-    "retry_count": 2,
-    "network_quality": "Good",
-    "previous_failures": 1,
-    "account_age_days": 450,
-    "status": "FAILED",
-    "failure_reason": "Timeout",
-}
-
-SCENARIOS: dict[str, dict] = {
-    "S1": {"steps": "merchant_timeout", "process": True,
-           "label": "genuine failure -> auto-recover"},
-    "S2": {"steps": "double_deduction", "process": False,
-           "label": "double deduction -> blocked"},
-    "S3": {"steps": "success", "process": False,
-           "label": "successful payment -> blocked"},
-    "S4": {"steps": "single_debit", "process": False,
-           "label": "insufficient evidence -> blocked"},
-    "S5": {"steps": "none", "process": False,
-           "label": "clean-failed fixture, no evidence yet"},
-    "S6": {"steps": "merchant_timeout", "process": False,
-           "label": "duplicate-process demo (S1's twin)"},
-}
-
-
-def _fmt_ts(dt: datetime) -> str:
-    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-
-def build_events(transaction_id: str, steps_key: str, start: datetime) -> list[dict]:
-    """Deterministic event chain — no RNG at all: fixed latencies, fixed
-    timestamps derived from `start`."""
-    events: list[dict] = []
-    elapsed_ms = 0.0
-    for seq, (event_type, extra_delay_ms) in enumerate(_STEPS[steps_key]):
-        info = EVENT_TYPE_INFO[event_type]
-        elapsed_ms += extra_delay_ms
-        latency_ms = (
-            TERMINAL_EVENT_MS if info["outcome"] == "TIMEOUT"
-            else BASE_LATENCY_MS + seq * 40
-        )
-        elapsed_ms += latency_ms
-        events.append({
-            "provider_event_id": f"{transaction_id}-{event_type}-{seq:03d}",
-            "event_type": event_type,
-            "source": info["source"],
-            "status": info["outcome"],
-            "event_timestamp": _fmt_ts(start + timedelta(milliseconds=elapsed_ms)),
-            "reference_id": f"{transaction_id}-{info['stage'].lower()}-ref",
-            "latency_ms": latency_ms,
-        })
-    return events
 
 
 # --------------------------------------------------------------------------

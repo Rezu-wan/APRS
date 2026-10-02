@@ -42,10 +42,21 @@ export function ExplanationCard({ transactionId }: { transactionId: string }) {
     >
       <h2
         id="explanation-heading"
-        className="flex items-center gap-2 text-sm font-semibold text-slate-900"
+        className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900"
       >
         <MessageSquareText aria-hidden="true" className="h-4 w-4 text-indigo-600" />
-        Explanation
+        AI explanation
+        {/* Audience chip — reflects the currently selected audience. */}
+        <span
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
+            audience === "customer"
+              ? "bg-indigo-50 text-indigo-700 ring-indigo-600/20"
+              : "bg-slate-100 text-slate-600 ring-slate-500/20"
+          }`}
+          data-testid="explanation-audience-chip"
+        >
+          {audience === "customer" ? "Customer view" : "Support view"}
+        </span>
       </h2>
 
       {isCustomer && (
@@ -147,6 +158,11 @@ export function ExplanationCard({ transactionId }: { transactionId: string }) {
           Generate a plain-language explanation of what happened to this transaction.
         </p>
       )}
+
+      {/* §16 concern separation — AI explains, it never authorizes. */}
+      <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
+        AI explains the deterministic result — it never authorizes or changes a recovery outcome.
+      </p>
     </section>
   );
 }
