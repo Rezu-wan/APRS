@@ -28,10 +28,12 @@ from api.core.security import ROLES
 from api.db.database import engine
 from api.routes import (
     auth,
+    autonomous_recovery,
     explanations,
     payment_events,
     recovery,
     reconstruction,
+    risk_assessment,
     stats,
     transactions,
 )
@@ -83,6 +85,8 @@ app.include_router(auth.router)
 app.include_router(stats.router)
 app.include_router(payment_events.router)
 app.include_router(reconstruction.router)
+app.include_router(risk_assessment.router)
+app.include_router(autonomous_recovery.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware

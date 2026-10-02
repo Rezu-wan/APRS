@@ -74,6 +74,13 @@ Key files:
 | `api/services/ai/` | Stage 4 GenAI layer: `base.py` (AIProvider), `openai_provider.py`, `mock_provider.py`, `prompts.py`, `fallback.py`, `schemas.py` |
 | `api/db/models.py`, `api/db/migrations/` | SQLAlchemy models + Alembic (`ai_explanations` table added in Stage 4) |
 | `frontend/` | Stage 5 React SPA (Vite + TS + Tailwind); thin client over the API — see section 15 and `frontend/README.md` |
+| `api/services/payment_provider.py` | Stage 8 mock sandbox provider (`MockPaymentProvider`, in-memory ledger, idempotent replay) |
+| `api/services/recovery_executor.py` | Stage 8 idempotent executor: safety gate → provider → verification, bounded retries |
+| `api/services/recovery_safety.py` | Stage 8 fresh-evidence safety gate (incl. new-settlement race protection) |
+| `api/services/recovery_decision_policy.py` | Stage 8 deterministic recovery decision policy |
+| `api/services/recovery_verifier.py` | Stage 8 post-execution verification (never `VERIFIED` without passing) |
+| `api/routes/autonomous_recovery.py` | Stage 8 `recovery/process` / `recovery/evaluate` / `recovery` endpoints |
+| `scripts/stage8_e2e.py` | Stage 8 live-API E2E verification (section 18) |
 
 ## 2. Environment setup
 
@@ -910,3 +917,384 @@ fallback templates speak the root cause in Bangla and English.
 - Confidence is evidence coverage, not a probability of correctness.
 - Event redelivery beyond the first occurrence is tolerated (deduplicated) but
   duplicates remain visible in `ordered_events` for audit purposes.
+
+---
+
+## 17. Risk & anomaly classification (Stage 7)
+
+Stage 7 adds the **classification layer** above Stage 6's evidence: it answers
+**"What does the evidence indicate?"** for a reconstructed payment — one
+deterministic anomaly category, a risk score/level, and whether the payment is
+a recovery candidate. Like Stage 6, this is **decision evidence, NOT action**:
+Stage 7 never releases limits, never changes transaction state, and never
+executes recovery — that remains the Stage 3 policy's exclusive authority.
+
+> **Scope boundary:** Stage 7 classifies; it does not act. `recovery_candidate`
+> is *routing evidence for a later stage*, not a recovery decision.
+
+### 17.1 Architecture
+
+```
+Payment Events → Reconstruction → Deterministic Evidence + ML Anomaly Signal → Hybrid Risk Engine → Risk Assessment → GenAI Explanation
+```
+
+### 17.2 Why deterministic rules are the authority
+
+The ML anomaly model can be **unavailable** (not loaded, artifact missing,
+inference error). Stage 7 must still assess every transaction in that state:
+the deterministic rule engine (`api/services/anomaly_rules.py`, a pure
+function, `rule_version "1"`) produces a **complete** assessment on stored
+evidence alone (`model_version: "rules-only"`, `ml_anomaly_score: null`).
+Degradation loses the ML signal — never the classification. This mirrors the
+Stage 3 invariant that decisions must be reproducible and auditable, not
+model-dependent.
+
+### 17.3 How ML is used — supporting signal, pinned precedence
+
+The dedicated scenario classifier (`synthetic-v1`, trained by
+`ml/train_anomaly.py`, served by `ml/predict_anomaly.py` through
+`MLService`) contributes exactly one number — `ml_anomaly_score` — and is
+bound by a precedence contract pinned in `api/services/risk_engine.py`:
+
+1. **The deterministic category ALWAYS wins.** ML never rewrites the
+   `anomaly_type` the rules established: if the rules say
+   `DOUBLE_DEDUCTION`, the classification is `DOUBLE_DEDUCTION` no matter
+   what the model scores.
+2. **ML may upgrade uncertainty only.** When the rules could not determine
+   an outcome (`INCOMPLETE` or `UNKNOWN`) **and** `ml_anomaly_score >= 0.7`,
+   the assessment is upgraded to `SUSPICIOUS` (`risk_level HIGH`,
+   `recovery_candidate False`) with an explicit `ML_HIGH_ANOMALY` evidence
+   item citing the score and the model's predicted scenario.
+3. **Blended score, one-way level drift.**
+   `risk_score = round(max(det, 0.5*ml + 0.5*det), 2)` — the blend can never
+   fall below the deterministic score. `risk_level` may rise **one** step
+   (LOW → MEDIUM → HIGH → CRITICAL) if the blend crosses 0.75; it may
+   **never** fall below the rules' level.
+4. **ML unavailable → rules-only.** `ml_anomaly_score` is `null`, the
+   assessment still completes, and the API logs once.
+
+### 17.4 The 9-value anomaly taxonomy
+
+| `anomaly_type` | Meaning |
+|---|---|
+| `NONE` | Clean, fully evidenced success — nothing anomalous, nothing to recover. |
+| `GENUINE_FAILURE` | Money left the customer but the flow failed downstream (gateway/merchant/settlement failure with nothing after it) — the recoverable case. |
+| `DOUBLE_DEDUCTION` | Two distinct provider events confirmed the customer's debit — money moved twice; manual financial review. |
+| `DUPLICATE_TRANSACTION` | A provider reference shared with *another* transaction — duplicate submission (amount similarity alone never triggers this). |
+| `SUCCESSFUL_BUT_UNCONFIRMED` | Settlement confirmed without merchant confirmation — reconciliation, not recovery. |
+| `FALSE_COMPLAINT` | Full success chain **plus** an explicit customer-reported-failure flag; never inferred from success alone. |
+| `SUSPICIOUS` | Unusual retry/attempt pattern without a determinable outcome, or an `INCOMPLETE`/`UNKNOWN` case the ML upgrade promoted (17.3 rule 2). |
+| `INCOMPLETE` | Too little evidence to say anything — uncertainty, honestly reported. |
+| `UNKNOWN` | Fallback when even incompleteness could not be established; never a guessed verdict. |
+
+Rules fire **first match wins**, financial-integrity rules (double deduction,
+duplicate transaction) outranking outcome rules, and every observed fact used
+is recorded as an `EvidenceItem` (code, description, source, severity) — the
+full audit trail is stored even when a rule did not fire.
+
+### 17.5 Risk score, risk level — and an honesty note
+
+Five risk levels exist: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (rules) and
+`UNKNOWN` (uncertainty, e.g. `INCOMPLETE` evidence). The **level** is the
+firing rule's verdict; the **score** is the evidence weight behind it
+(`round(min(1.0, 0.85*n_high + 0.5*n_medium + 0.2*n_low), 2)`, then the ML
+blend of 17.3).
+
+> **Honesty note:** `risk_score` is **NOT a calibrated fraud probability.**
+> It is a deterministic evidence-weighting number (plus an ML blend) trained
+> and tuned on synthetic data. Report it as **"Risk Score: 0.87 / Risk
+> Level: HIGH"** — never as "87% chance of fraud". No stage of this system
+> makes a probabilistic claim about a person.
+
+### 17.6 `recovery_candidate` semantics
+
+`recovery_candidate: true` **only** for clean genuine failures (`GENUINE_FAILURE`
+backed by unambiguous single-failure evidence). Every other classification is
+`false` and carries a `recovery_block_reason`, e.g.:
+
+| Classification | Block reason (examples) |
+|---|---|
+| `DOUBLE_DEDUCTION` / `DUPLICATE_TRANSACTION` | "multiple customer debit confirmations require manual financial review" / "same provider reference found on another transaction" |
+| `SUCCESSFUL_BUT_UNCONFIRMED` | "settlement confirmed; funds moved — manual reconciliation required" |
+| `NONE` | "no failure to recover" |
+| `FALSE_COMPLAINT` | "payment completed successfully — customer-reported failure contradicted by full evidence chain" |
+| `SUSPICIOUS` | "unusual retry/attempt pattern without a determinable payment outcome" |
+| `INCOMPLETE` / `UNKNOWN` | "insufficient payment evidence" |
+
+This flag is evidence for a later recovery stage — Stage 7 never acts on it.
+
+### 17.7 APIs
+
+| Endpoint | Roles | Purpose |
+|---|---|---|
+| `POST /api/v1/transactions/{id}/risk-assessment` | `SYSTEM`, `ADMIN` | Run the hybrid engine, persist the assessment evidence + one `ANOMALY_CLASSIFIED` twin observation, in one commit. Body `{"customer_reported_failure": false}` (flag required for `FALSE_COMPLAINT` — never inferred). |
+| `GET /api/v1/transactions/{id}/risk-assessment` | `SYSTEM`, `ADMIN`, `SUPPORT` | Latest stored assessment, read-only (`reused: true`; nothing recomputed, no twin append). |
+
+`CUSTOMER` is excluded from both: the assessment carries internal decision
+evidence (triggered rules, ML scores, block reasons) — a customer-facing view
+of anti-fraud evidence would leak risk-model internals and enable gaming the
+rules. Response shape (both endpoints):
+
+```json
+{
+  "assessment": {
+    "anomaly_type": "GENUINE_FAILURE",
+    "risk_level": "LOW",
+    "risk_score": 0.5,
+    "ml_anomaly_score": 0.31,
+    "recovery_candidate": true,
+    "recovery_block_reason": null,
+    "evidence": [...],
+    "triggered_rules": [{"rule_id": "R3", "name": "genuine gateway failure"}],
+    "model_version": "synthetic-v1",
+    "rule_version": "1"
+  },
+  "reused": false,
+  "digital_twin_event_recorded": true
+}
+```
+
+**Idempotency:** an `evidence_fingerprint` (sha256 over the transaction id,
+sorted event evidence, reconstruction root cause + confidence, complaint
+flag, effective model version, rule version) decides reuse — the same input
+evidence replays the stored assessment with `reused: true`, no re-insert and
+no duplicate twin event. A model upgrade alone produces a fresh assessment.
+
+### 17.8 Persistence and Digital Twin
+
+Assessments are stored in the new **`risk_assessments`** table (migration
+`dfd33619148d`) including the full evidence and triggered-rule JSON, the
+fingerprint, and both deterministic and blended scores. Classification
+appends one **`ANOMALY_CLASSIFIED`** observation to the append-only Digital
+Twin — an observation, not a state transition (`previous_state ==
+new_state`), structured metadata (anomaly type, level, score, rule ids,
+model/rule versions, fingerprint), idempotent on the fingerprint.
+
+### 17.9 GenAI integration (v3)
+
+`ExplanationContext` now carries the assessment; `PROMPT_VERSION` is **v3**,
+so cached explanations regenerate when a classification changes. Wording is
+customer-neutral by design: **no anomaly data reaches customers** — the
+customer audience receives neither the classification, the triggered rules,
+nor the ML score, and prompts never use "fraud" language about persons (a
+payment may be `SUSPICIOUS`; a customer is never accused). Support/system
+audiences see the full evidence trail.
+
+### 17.10 End-to-end verification script
+
+`scripts/stage7_e2e.py` drives the **live API** through five scenarios
+(create transaction → ingest payment events → POST risk-assessment → GET
+read-back → assert an `ANOMALY_CLASSIFIED` twin event in the timeline) and
+prints a PASS/FAIL verdict table (stdlib only, deterministic ids from
+`--seed`):
+
+```bash
+uvicorn api.main:app --reload          # terminal 1
+py -m scripts.stage7_e2e               # terminal 2 (defaults below)
+py -m scripts.stage7_e2e --api-url http://127.0.0.1:8000 --seed 42 --verbose
+```
+
+| Scenario | Evidence | Expected |
+|---|---|---|
+| S1 `gateway_timeout` | debit confirmed, request sent, gateway times out | `GENUINE_FAILURE`, candidate `true` |
+| S2 double deduction | customer debited **twice**, one gateway attempt fails | `DOUBLE_DEDUCTION`, candidate `false` |
+| S3 success | all 7 happy-path events | `NONE`, candidate `false` |
+| S4 incomplete | a single debit confirmation | `INCOMPLETE`, candidate `false` |
+| S5 suspicious-looking | gateway timeout on a high-risk transaction (5 retries, 4 prior failures, poor network) | `GENUINE_FAILURE` — **evidence wins precedence** over the elevated ML score; the score is printed for inspection |
+
+### 17.11 Key Stage 7 files
+
+| Path | Purpose |
+|---|---|
+| `api/services/anomaly_rules.py` | Versioned deterministic rule engine (R1–R10, evidence-first) |
+| `api/services/risk_engine.py` | Hybrid engine: pinned ML precedence, fingerprint idempotency, twin observation |
+| `api/routes/risk_assessment.py` | POST/GET risk-assessment endpoints |
+| `ml/train_anomaly.py` / `ml/predict_anomaly.py` | Anomaly scenario classifier (`synthetic-v1`) |
+| `scripts/generate_anomaly_dataset.py` | Scenario-labeled training data generator |
+| `scripts/stage7_e2e.py` | Live-API E2E verification (17.10) |
+| `reports/stage7_anomaly_model.md` | Model training report (honest metrics) |
+
+> **Stage 7 uses synthetic/sandbox data and is not validated against real banking fraud datasets.**
+
+---
+
+## 18. Autonomous recovery (Stage 8)
+
+Stages 6–7 answered *"what happened?"* and *"what does the evidence indicate?"*.
+Stage 8 finally **acts** — but only through a deterministic, auditable pipeline
+whose every step is owned by the backend:
+
+```
+Stage 6 Reconstruction → Stage 7 Risk Assessment → Recovery Policy → Safety Gate → Idempotent Executor → Sandbox Provider → Verification → Digital Twin
+```
+
+**The frontend never releases anything.** There is no human "release" click in
+the autonomous path: `POST /recovery/process` is backend-owned orchestration —
+safety and policy decide server-side, the executor runs, the twin records, and
+the frontend only **visualizes** the outcome (read-only evidence from
+`GET /recovery` and the timeline). The existing manual
+`POST /recovery/release-limit` (section 10) keeps working unchanged for the
+`MANUAL_REVIEW` path — see 18.8.
+
+### 18.1 Eligibility — the decision policy
+
+`api/services/recovery_decision_policy.py` is a pure function of (transaction,
+stored Stage 7 assessment, Stage 6 reconstruction). Exactly one shape is
+eligible:
+
+> `GENUINE_FAILURE` **+** risk `LOW`/`MEDIUM` **+** `recovery_candidate: true`
+> **+** exactly one debit confirmation **+** settlement not confirmed
+> → **`RELEASE_LIMIT`**.
+
+Every other taxonomy value is blocked with a stable reason code:
+
+| Case | Action | `blocked_reason` |
+|---|---|---|
+| `GENUINE_FAILURE` but risk rose to `HIGH`/`CRITICAL` since assessment (or caps exceeded) | `MANUAL_REVIEW` | `RISK_NO_LONGER_PERMITS` / `NOT_ELIGIBLE` |
+| `DOUBLE_DEDUCTION` | `NO_ACTION` | `DOUBLE_DEDUCTION` (manual financial review) |
+| `DUPLICATE_TRANSACTION`, `SUCCESSFUL_BUT_UNCONFIRMED`, `FALSE_COMPLAINT`, `SUSPICIOUS`, `UNKNOWN` | `NO_ACTION` / `MANUAL_REVIEW` | `NOT_ELIGIBLE` |
+| `INCOMPLETE` — not enough evidence to say anything | `NO_ACTION` | `INSUFFICIENT_EVIDENCE` |
+| `NONE` — payment completed | `NO_ACTION` | `ALREADY_SUCCESS` |
+
+`HIGH`/`CRITICAL` genuine failures are queued (`MANUAL_REVIEW_QUEUED`), never
+auto-released: the autonomous pipeline widens the funnel, it does not lower the
+bar.
+
+### 18.2 The safety gate — fresh evidence, nothing trusted
+
+Eligibility was decided on a snapshot. Before a single unit moves,
+`api/services/recovery_safety.py` **re-derives everything** from fresh data:
+events are reloaded, the reconstruction rebuilt, the latest stored assessment
+re-read, existing recovery rows checked. The recheck list:
+
+1. Transaction still in a recoverable state (`FAILED`, not already
+   `LIMIT_RELEASED` / recovered — `ALREADY_SUCCESS`, `ALREADY_RECOVERED`).
+2. **No new successful settlement** since the assessment —
+   `NEW_SUCCESSFUL_SETTLEMENT`. This is the race protection for spec section
+   10's scenario: a settlement confirmation that lands *while* recovery is
+   being considered must abort the release, otherwise the customer would be
+   repaid for a payment that actually succeeded.
+3. Still exactly one debit confirmation (`DOUBLE_DEDUCTION` otherwise).
+4. A current failure still exists and reconstruction still points at one
+   (`INSUFFICIENT_EVIDENCE` otherwise).
+5. Risk level still permits release (`RISK_NO_LONGER_PERMITS`).
+
+**When uncertain, DO NOT RECOVER** — the gate blocks on any doubt and the row
+lands in `BLOCKED` with the reason code.
+
+### 18.3 Idempotency and retries
+
+- The idempotency key is `sha256(transaction_id + action + policy_version +
+  evidence_fingerprint)`, enforced by a **DB UNIQUE constraint**
+  (`RecoveryActionRecord.idempotency_key`). Identical evidence replays the
+  stored row — the provider is never called twice for the same recovery.
+- The provider level is independently idempotent: `MockPaymentProvider`
+  detects replays of an already-processed release and returns the original
+  reference (`already_processed`) instead of double-releasing.
+- Retries are **bounded: max 3 attempts** on the same row, and only for
+  technical `FAILED` executions. Business blocks (`BLOCKED` rows) are
+  **never retried** — a policy refusal is an answer, not a transient error.
+
+### 18.4 The mock provider + sandbox ledger
+
+`api/services/payment_provider.py` implements `MockPaymentProvider`: an
+**in-memory** ledger (`ensure_hold` / `release_limit` move real state within
+it — a hold must exist before it can be released, a reference is issued per
+release). It resets on server restart. Every row, response, and twin event is
+labeled **SIMULATED** (`simulated: true` throughout the API surface).
+
+> **Autonomous recovery operates on a simulated sandbox provider. No real
+> financial transaction is performed.**
+
+### 18.5 Verification
+
+After execution, `api/services/recovery_verifier.py` runs 6 checks (provider
+reference issued, amount matches, hold state consistent, ledger entry present,
+status consistent, currency match). The row reaches **`VERIFIED`** — and the
+transaction **`LIMIT_RELEASED`** — **only if every check passes**; otherwise
+the row lands in a safe state (`FAILED`, bounded-retry eligible) and the
+transaction stays out of `LIMIT_RELEASED`.
+
+### 18.6 Digital Twin recovery lifecycle
+
+Append-only, as everywhere else. The recovery lifecycle is recorded as
+observations (`previous_state == new_state`) plus one real validated
+transition at the end:
+
+```
+RECOVERY_ELIGIBILITY_ASSESSED → RECOVERY_APPROVED → RECOVERY_STARTED
+→ RECOVERY_EXECUTED → RECOVERY_VERIFIED   (then the transaction's one real hop: FAILED → LIMIT_RELEASED)
+                             ↘ RECOVERY_BLOCKED     (blocked: reason code)
+                             ↘ RECOVERY_FAILED      (execution failure: safe state)
+```
+
+Eligibility assessments and approvals are **observations, never transitions** —
+the state machine is only ever moved by the executor's explicit, validated
+`LIMIT_RELEASED` hop.
+
+### 18.7 Failure handling
+
+Every failure path lands in a **safe state**: policy refusal → `BLOCKED` row +
+`RECOVERY_BLOCKED` twin event; gate block → same, with the reason code;
+execution failure → `FAILED` row + `RECOVERY_FAILED` (retryable up to 3);
+verification failure → never `VERIFIED`, never `LIMIT_RELEASED`. The system's
+standing rule: **when uncertain, DO NOT RECOVER.**
+
+### 18.8 Manual convergence
+
+Support keeps the Stage 3 flow: `POST /recovery/release-limit` still works on
+`MANUAL_REVIEW` outcomes and **replays idempotently** against the same ledger.
+What support **cannot** do is bypass the safety gate — no force-release
+endpoint exists. That is a deliberate, documented decision: a human override
+that skips fresh-evidence checks would reintroduce exactly the
+settlement-race / double-deduction classes Stage 8 exists to prevent.
+
+### 18.9 APIs
+
+| Endpoint | Roles | Purpose |
+|---|---|---|
+| `POST /api/v1/transactions/{id}/recovery/process` | `SYSTEM`, `ADMIN` | Full pipeline, commit ONCE. Response `decision`: `AUTO_RECOVERED` \| `RECOVERY_BLOCKED` \| `MANUAL_REVIEW_QUEUED` \| `ALREADY_RECOVERED`, plus `action`, `status`, `recovery_id`, `provider_reference`, `reason`, `simulated`. |
+| `POST /api/v1/transactions/{id}/recovery/evaluate` | `SYSTEM`, `ADMIN`, `SUPPORT` | Policy + safety only — no writes, no provider call ("why wasn't this auto-recovered?"). |
+| `GET /api/v1/transactions/{id}/recovery` | `SYSTEM`, `ADMIN`, `SUPPORT` | Latest recovery action row, read-only evidence. |
+
+### 18.10 End-to-end verification script
+
+`scripts/stage8_e2e.py` drives the **live API** (create → ingest payment
+events → POST risk-assessment → POST recovery/process → assertions on
+`GET /recovery` + `GET /timeline`):
+
+```bash
+uvicorn api.main:app --reload          # terminal 1
+py -m scripts.stage8_e2e               # terminal 2 (defaults below)
+py -m scripts.stage8_e2e --api-url http://127.0.0.1:8000 --seed 42 --verbose
+py -m scripts.stage8_e2e --demo        # S1 only, narrated step by step
+```
+
+| Scenario | Evidence | Expected |
+|---|---|---|
+| S1 genuine failure | debit OK, merchant confirmation times out | `AUTO_RECOVERED`, `RELEASE_LIMIT`, `VERIFIED`, simulated, sandbox reference, twin lifecycle present, tx `LIMIT_RELEASED` |
+| S2 double deduction | customer debited twice, gateway times out | `RECOVERY_BLOCKED`, `NO_ACTION` — provider never called (no reference), `DOUBLE_DEDUCTION` |
+| S3 success | all 7 happy-path events | `RECOVERY_BLOCKED`, `ALREADY_SUCCESS` |
+| S4 incomplete | a single debit confirmation | `RECOVERY_BLOCKED`, `INSUFFICIENT_EVIDENCE` |
+| S5 race (spec 43) | genuine failure, then a `SETTLEMENT_CONFIRMED` lands | `RECOVERY_BLOCKED` (`NEW_SUCCESSFUL_SETTLEMENT` or `ALREADY_SUCCESS`), **never** auto-recovered, tx never released |
+| S6 duplicate | `process` called twice | 1st `AUTO_RECOVERED`, 2nd `ALREADY_RECOVERED`, same `recovery_id`, released exactly once |
+| S7/S8 provider failure / verifier | failure hook is server-side — not injectable via the API | safe-state contract asserted live; full paths covered by `tests/test_recovery_executor.py` + `tests/test_recovery_verifier.py` |
+
+### 18.11 Dashboard
+
+The Stage 5 dashboard's recovery views surface the sandbox metrics (recovery
+rows with `simulated: true`, blocked reasons, released amounts) read-only —
+consistent with the no-human-release-click design above.
+
+### 18.12 Key Stage 8 files
+
+| Path | Purpose |
+|---|---|
+| `api/services/payment_provider.py` | `MockPaymentProvider` + in-memory sandbox ledger (idempotent) |
+| `api/services/recovery_safety.py` | Fresh-evidence safety gate |
+| `api/services/recovery_decision_policy.py` | Deterministic eligibility policy |
+| `api/services/recovery_executor.py` | Idempotent executor (gate → provider → verification, bounded retries) |
+| `api/services/recovery_verifier.py` | Post-execution verification (6 checks) |
+| `api/services/autonomous_recovery.py` | Orchestration: assessment → policy → gate → execute, one commit |
+| `api/routes/autonomous_recovery.py` | `process` / `evaluate` / `GET recovery` endpoints |
+| `scripts/stage8_e2e.py` | Live-API E2E verification (18.10) |

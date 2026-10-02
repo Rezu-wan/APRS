@@ -36,10 +36,16 @@ class MLService:
 
     def __init__(self) -> None:
         self._models: dict[str, Any] | None = None
+        self._anomaly_models: dict[str, Any] | None = None
+        self._anomaly_warning_logged = False
 
     @property
     def loaded(self) -> bool:
         return self._models is not None
+
+    @property
+    def anomaly_loaded(self) -> bool:
+        return self._anomaly_models is not None
 
     def load(self, settings: Settings | None = None) -> None:
         # imported here so importing this module never pulls torch-heavy
@@ -53,6 +59,39 @@ class MLService:
         logger.info("loading ML models from %s", model_dir)
         self._models = load_models(models_dir=model_dir)
         logger.info("ML models loaded: %s", sorted(k for k in self._models if k != "meta"))
+
+        # Stage 7 anomaly model: OPTIONAL. Missing/wrong artifacts must NEVER
+        # break startup — the risk engine degrades to rules-only assessments
+        # (precedence rule 4 in api/services/risk_engine.py).
+        try:
+            from ml.predict_anomaly import load_anomaly_models
+
+            self._anomaly_models = load_anomaly_models(models_dir=model_dir)
+        except Exception:  # noqa: BLE001 — optional model, startup must survive
+            self._anomaly_models = None
+        if self._anomaly_models is None:
+            if not self._anomaly_warning_logged:
+                logger.warning(
+                    "anomaly models not available from %s — risk assessment "
+                    "will run in rules-only mode",
+                    model_dir,
+                )
+                self._anomaly_warning_logged = True
+        else:
+            logger.info("anomaly models loaded")
+
+    def predict_anomaly_features(self, features: dict) -> dict | None:
+        """Score one feature dict with the Stage 7 anomaly model.
+
+        Returns None when the anomaly model is unavailable (caller treats the
+        ML signal as absent, never as an error).
+        """
+        if self._anomaly_models is None:
+            return None
+
+        from ml.predict_anomaly import predict_anomaly
+
+        return predict_anomaly(features, models=self._anomaly_models)
 
     def assess(
         self,

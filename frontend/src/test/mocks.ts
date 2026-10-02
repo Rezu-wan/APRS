@@ -3,7 +3,7 @@
 // import in a test file so the mocks are registered before pages load.
 import { vi } from "vitest";
 import { ApiError } from "../api/client";
-import type { ExplanationResponse, MeResponse, RecoveryDecisionResponse, ReconstructionResult, StatsSummary, TimelineResponse, Transaction } from "../types/api";
+import type { ExplanationResponse, MeResponse, RecoveryDecisionResponse, RecoveryOutcome, RecoveryRecord, ReconstructionResult, RiskAssessmentResponse, StatsSummary, TimelineResponse, Transaction } from "../types/api";
 
 vi.mock("../api/auth", () => ({
   getMe: vi.fn(),
@@ -15,6 +15,10 @@ vi.mock("../api/transactions", () => ({
   getTimeline: vi.fn(),
   getStats: vi.fn(),
   getReconstruction: vi.fn(),
+  getRiskAssessment: vi.fn(),
+  runRiskAssessment: vi.fn(),
+  getRecovery: vi.fn(),
+  processRecovery: vi.fn(),
 }));
 
 vi.mock("../api/recovery", () => ({
@@ -89,6 +93,53 @@ export const mockGetReconstruction = vi.mocked(
   mockReset: () => unknown;
   mock: { calls: unknown[][] };
 };
+export const mockGetRiskAssessment = vi.mocked(
+  transactionsMod.getRiskAssessment
+) as unknown as {
+  (id: string): Promise<RiskAssessmentResponse | null>;
+  mockResolvedValue: (v: RiskAssessmentResponse | null) => unknown;
+  mockResolvedValueOnce: (v: RiskAssessmentResponse | null) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<RiskAssessmentResponse | null>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+export const mockRunRiskAssessment = vi.mocked(
+  transactionsMod.runRiskAssessment
+) as unknown as {
+  (id: string, customerReportedFailure?: boolean): Promise<RiskAssessmentResponse>;
+  mockResolvedValue: (v: RiskAssessmentResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<RiskAssessmentResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetRecovery = vi.mocked(
+  transactionsMod.getRecovery
+) as unknown as {
+  (id: string): Promise<RecoveryRecord | null>;
+  mockResolvedValue: (v: RecoveryRecord | null) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<RecoveryRecord | null>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockProcessRecovery = vi.mocked(
+  transactionsMod.processRecovery
+) as unknown as {
+  (id: string): Promise<RecoveryOutcome>;
+  mockResolvedValue: (v: RecoveryOutcome) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<RecoveryOutcome>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
 
 export const mockReleaseLimit = vi.mocked(recoveryMod.releaseLimit) as unknown as {
   (id: string): Promise<RecoveryDecisionResponse>;
@@ -134,6 +185,28 @@ function defaultReconstruction(): Promise<ReconstructionResult> {
   return Promise.reject(new ApiError(404, "NOT_FOUND", "Transaction not found"));
 }
 
+/**
+ * Default behaviour for getRiskAssessment: the backend reports 404 when no
+ * assessment exists; the API layer turns that into `null`, which the panel
+ * renders as a compact muted line (plus a Run-assessment button for staff).
+ */
+function defaultRiskAssessment(): Promise<RiskAssessmentResponse | null> {
+  return Promise.resolve(null);
+}
+
+function defaultRunRiskAssessment(): Promise<RiskAssessmentResponse> {
+  return Promise.reject(new ApiError(500, "UNKNOWN", "runRiskAssessment not stubbed"));
+}
+
+/** Default for getRecovery: 404 -> null (no recovery yet) — mirrors the API layer. */
+function defaultGetRecovery(): Promise<import("../types/api").RecoveryRecord | null> {
+  return Promise.resolve(null);
+}
+
+function defaultProcessRecovery(): Promise<import("../types/api").RecoveryOutcome> {
+  return Promise.reject(new ApiError(500, "UNKNOWN", "processRecovery not stubbed"));
+}
+
 /** A promise that never settles — used to hold requests in-flight. */
 export function neverPromise<T>(): Promise<T> {
   return new Promise<T>(() => {});
@@ -148,6 +221,14 @@ export function resetApiMocks(): void {
   mockGetStats.mockReset();
   mockGetReconstruction.mockReset();
   mockGetReconstruction.mockImplementation(defaultReconstruction as never);
+  mockGetRiskAssessment.mockReset();
+  mockGetRiskAssessment.mockImplementation(defaultRiskAssessment as never);
+  mockRunRiskAssessment.mockReset();
+  mockRunRiskAssessment.mockImplementation(defaultRunRiskAssessment as never);
+  mockGetRecovery.mockReset();
+  mockGetRecovery.mockImplementation(defaultGetRecovery as never);
+  mockProcessRecovery.mockReset();
+  mockProcessRecovery.mockImplementation(defaultProcessRecovery as never);
   mockReleaseLimit.mockReset();
   mockRequestExplanation.mockReset();
 }

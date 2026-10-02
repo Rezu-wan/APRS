@@ -52,9 +52,15 @@ def test_stats_summary_roles(client):
         resp = client.get(STATS_URL, headers=headers)
         assert resp.status_code == 200
         body = resp.json()
-        assert set(body) == {"total", "by_state", "decisions"}
+        assert set(body) == {
+            "total", "by_state", "decisions", "risk_assessments",
+            "autonomous_recovery",  # Stage 8
+        }
         assert set(body["decisions"]) == {
             "LIMIT_RELEASED", "MANUAL_REVIEW", "RECOVERY_REJECTED",
+        }
+        assert set(body["risk_assessments"]) == {
+            "total", "by_anomaly_type", "by_risk_level", "recovery_candidates",
         }
 
 

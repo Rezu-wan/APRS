@@ -13,6 +13,11 @@ ai_explanations      derived GenAI explanation cache (NON-AUTHORITATIVE) —
                      explanation layer writes
 payment_events       Stage 6 payment-DOMAIN evidence stream (debit/gateway/
                      merchant/settlement) — append-only, replay-safe
+risk_assessments     Stage 7 hybrid risk assessment EVIDENCE (rules + ML),
+                     never an action — history per transaction, fingerprint-
+                     idempotent
+recovery_actions     Stage 8 autonomous recovery action — SANDBOX execution
+                     record; idempotency_key is the UNIQUE anchor
 
 Timestamps are timezone-aware UTC. UUIDs are stored as 36-char strings for
 portability across PostgreSQL and SQLite.
@@ -207,6 +212,107 @@ class PaymentEvent(Base):
     event_metadata: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
+    )
+
+    transaction: Mapped[Transaction] = relationship()
+
+
+class RiskAssessmentRecord(Base):
+    """Stage 7 hybrid risk assessment — decision EVIDENCE for Stage 8, never
+    an action. Multiple rows per transaction (history); the latest row
+    matching the current evidence fingerprint is reused instead of
+    re-computing and re-appending to the Digital Twin."""
+
+    __tablename__ = "risk_assessments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    transaction_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("transactions.transaction_id"), index=True
+    )
+    # sha256 over the assessment's input evidence — the idempotency anchor
+    evidence_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    anomaly_type: Mapped[str] = mapped_column(String(32), index=True)
+    risk_level: Mapped[str] = mapped_column(String(16), index=True)
+    risk_score: Mapped[float] = mapped_column(Float)
+    ml_anomaly_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deterministic_risk_score: Mapped[float] = mapped_column(Float)
+    # DECISION EVIDENCE for Stage 8 — Stage 7 never executes recovery
+    recovery_candidate: Mapped[bool] = mapped_column(Boolean)
+    recovery_block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reconstruction_root_cause: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    reconstruction_confidence: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    customer_reported_failure: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidence: Mapped[list] = mapped_column(JSON)
+    triggered_rules: Mapped[list] = mapped_column(JSON)
+    model_version: Mapped[str] = mapped_column(String(32))
+    rule_version: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    transaction: Mapped[Transaction] = relationship()
+
+
+class RecoveryActionRecord(Base):
+    """Stage 8 autonomous recovery action — SANDBOX execution record. Idempotency
+    anchor is idempotency_key (UNIQUE at DB level): sha256 of
+    transaction_id + action + policy_version + risk-evidence fingerprint, so
+    identical evidence replays safely while genuinely new evidence may warrant
+    a new attempt. BLOCKED decisions are also recorded (provider never called)."""
+
+    __tablename__ = "recovery_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    recovery_id: Mapped[str] = mapped_column(
+        String(36), unique=True, default=new_event_id, index=True
+    )
+    transaction_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("transactions.transaction_id"), index=True
+    )
+    # RELEASE_LIMIT | NO_ACTION | MANUAL_REVIEW
+    action: Mapped[str] = mapped_column(String(24))
+    # PENDING|EXECUTING|COMPLETED|FAILED|BLOCKED|VERIFICATION_PENDING|VERIFIED
+    status: Mapped[str] = mapped_column(String(24), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+
+    attempt_count: Mapped[int] = mapped_column(Integer, default=1)
+    requested_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    released_amount: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
+    currency: Mapped[str] = mapped_column(String(3), default="BDT")
+
+    policy_version: Mapped[str] = mapped_column(String(24))
+    executor_version: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    verifier_version: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    risk_assessment_id: Mapped[str | None] = mapped_column(String(36), index=True)
+
+    decision_reason: Mapped[str] = mapped_column(Text)
+    blocked_reason: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # sandbox provider ("mock") + its result/verification snapshots
+    provider: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    provider_reference: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    provider_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    verification_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     transaction: Mapped[Transaction] = relationship()

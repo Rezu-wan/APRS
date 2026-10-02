@@ -1,5 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { getReconstruction, getStats, getTimeline, getTransaction } from "../api/transactions";
+import {
+  getReconstruction,
+  getRecovery,
+  getRiskAssessment,
+  getStats,
+  getTimeline,
+  getTransaction,
+} from "../api/transactions";
 
 /** Centralized query-key factories — keep invalidation keys in sync with these. */
 export const queryKeys = {
@@ -7,6 +14,8 @@ export const queryKeys = {
   transaction: (id: string) => ["transaction", id] as const,
   timeline: (id: string) => ["timeline", id] as const,
   reconstruction: (id: string) => ["reconstruction", id] as const,
+  riskAssessment: (id: string) => ["risk-assessment", id] as const,
+  recovery: (id: string) => ["recovery", id] as const,
 };
 
 export function useStats() {
@@ -36,6 +45,23 @@ export function useReconstruction(id: string) {
   return useQuery({
     queryKey: queryKeys.reconstruction(id),
     queryFn: () => getReconstruction(id),
+    enabled: id.length > 0,
+  });
+}
+
+export function useRiskAssessment(id: string) {
+  return useQuery({
+    queryKey: queryKeys.riskAssessment(id),
+    queryFn: () => getRiskAssessment(id),
+    enabled: id.length > 0,
+  });
+}
+
+/** GET …/recovery — 404 already mapped to null by the API layer. */
+export function useRecovery(id: string) {
+  return useQuery({
+    queryKey: queryKeys.recovery(id),
+    queryFn: () => getRecovery(id),
     enabled: id.length > 0,
   });
 }

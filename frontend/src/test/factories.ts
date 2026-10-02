@@ -4,6 +4,8 @@ import type {
   PaymentEventOut,
   RecoveryDecisionResponse,
   ReconstructionResult,
+  RiskAssessment,
+  RiskAssessmentResponse,
   StatsSummary,
   TimelineEvent,
   TimelineResponse,
@@ -179,6 +181,105 @@ export function makeStats(overrides: Partial<StatsSummary> = {}): StatsSummary {
       MANUAL_REVIEW: 1,
       RECOVERY_REJECTED: 0,
     },
+    ...overrides,
+  };
+}
+
+export function makeRiskAssessment(
+  overrides: Partial<RiskAssessment> = {}
+): RiskAssessment {
+  return {
+    transaction_id: "TXN-1",
+    assessment_id: "ASSESS-1",
+    anomaly_type: "GENUINE_FAILURE",
+    risk_level: "LOW",
+    risk_score: 0.14,
+    ml_anomaly_score: 0.09,
+    deterministic_risk_score: 0.2,
+    recovery_candidate: true,
+    recovery_block_reason: null,
+    evidence: [
+      {
+        code: "GATEWAY_TIMEOUT",
+        description: "Gateway authorization timed out after 30,000 ms.",
+        source: "SIMULATOR",
+        severity: "MEDIUM",
+      },
+      {
+        code: "SINGLE_DEBIT",
+        description: "Exactly one customer bank debit confirmed.",
+        source: "SIMULATOR",
+        severity: "LOW",
+      },
+    ],
+    triggered_rules: [{ rule_id: "R1", name: "Genuine failure detected" }],
+    reconstruction_root_cause: "GATEWAY_TIMEOUT",
+    reconstruction_confidence: 0.8,
+    customer_reported_failure: false,
+    model_version: "xgb-v3",
+    rule_version: "rules-v2",
+    created_at: iso(2),
+    ...overrides,
+  };
+}
+
+export function makeRiskAssessmentResponse(
+  overrides: Partial<RiskAssessmentResponse> = {},
+  assessmentOverrides: Partial<RiskAssessment> = {}
+): RiskAssessmentResponse {
+  return {
+    assessment: makeRiskAssessment(assessmentOverrides),
+    reused: false,
+    digital_twin_event_recorded: true,
+    ...overrides,
+  };
+}
+
+
+/** Stage 8: a VERIFIED autonomous recovery record (defaults) — override status
+ * to exercise blocked/failed panel states. */
+export function makeRecovery(
+  overrides: Partial<import("../types/api").RecoveryRecord> = {}
+): import("../types/api").RecoveryRecord {
+  return {
+    transaction_id: "TXN-RECOVERY-1",
+    action: "RELEASE_LIMIT",
+    status: "VERIFIED",
+    recovery_id: "d5f2a1b0-0000-4000-8000-000000000001",
+    decision_reason: "Genuine failure with confirmed debit and no settlement.",
+    blocked_reason: null,
+    failure_reason: null,
+    requested_amount: "30.00",
+    released_amount: "30.00",
+    currency: "BDT",
+    provider: "mock",
+    provider_reference: "REL-A1B2C3D4",
+    policy_version: "autonomous-v1",
+    created_at: iso(2),
+    verified_at: iso(3),
+    simulated: true,
+    ...overrides,
+  };
+}
+
+export function makeRecoveryOutcome(
+  overrides: Partial<import("../types/api").RecoveryOutcome> = {}
+): import("../types/api").RecoveryOutcome {
+  return {
+    transaction_id: "TXN-RECOVERY-1",
+    decision: "AUTO_RECOVERED",
+    action: "RELEASE_LIMIT",
+    status: "VERIFIED",
+    recovery_id: "d5f2a1b0-0000-4000-8000-000000000001",
+    provider_reference: "REL-A1B2C3D4",
+    reason: "Genuine failure with confirmed debit and no settlement.",
+    simulated: true,
+    assessment: {
+      anomaly_type: "GENUINE_FAILURE",
+      risk_level: "LOW",
+      recovery_candidate: true,
+    },
+    digital_twin_recorded: true,
     ...overrides,
   };
 }

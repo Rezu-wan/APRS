@@ -7,7 +7,7 @@ import { ApiError } from "../api/client";
 import { ErrorState } from "../components/ui/ErrorState";
 import { EmptyState } from "../components/ui/EmptyState";
 import { StatusBadge } from "../components/transaction/StatusBadge";
-import type { TransactionState } from "../types/api";
+import { humanizeAnomaly, type TransactionState } from "../types/api";
 
 /** Fixed state order; only states present in by_state are rendered (zero fabrication). */
 const STATE_ORDER: TransactionState[] = [
@@ -28,6 +28,17 @@ const DECISION_LABELS = [
   ["MANUAL_REVIEW", "Manual reviews"],
   ["RECOVERY_REJECTED", "Recovery rejected"],
 ] as const;
+
+/** Top-N anomaly-type chips for the additive risk-assessment stats block. */
+function topAnomalyTypes(
+  byAnomalyType: Record<string, number>,
+  n = 3
+): Array<[string, number]> {
+  return Object.entries(byAnomalyType)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n);
+}
 
 const percentFormat = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 0 });
 
@@ -190,6 +201,94 @@ export default function Dashboard() {
         <h1 className="text-lg font-semibold text-slate-900">Platform overview</h1>
         <QuickSearch />
       </div>
+
+      {/* Additive Stage 7 block — rendered only when the backend provides it */}
+      {data.risk_assessments && (
+        <section aria-labelledby="risk-assessments-heading">
+          <h2 id="risk-assessments-heading" className="text-sm font-semibold text-slate-900">
+            Risk assessments
+          </h2>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center gap-x-10 gap-y-3">
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Total assessments
+                </h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                  {data.risk_assessments.total.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  Recovery candidates
+                </h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                  {data.risk_assessments.recovery_candidates.toLocaleString()}
+                </p>
+              </div>
+              {topAnomalyTypes(data.risk_assessments.by_anomaly_type).length > 0 && (
+                <div className="min-w-0">
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                    Top anomaly types
+                  </h3>
+                  <ul className="mt-1.5 flex flex-wrap gap-2">
+                    {topAnomalyTypes(data.risk_assessments.by_anomaly_type).map(
+                      ([anomaly, count]) => (
+                        <li
+                          key={anomaly}
+                          className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-inset ring-slate-500/20"
+                        >
+                          {humanizeAnomaly(anomaly)}
+                          <span className="ml-1.5 tabular-nums text-slate-500">
+                            {count.toLocaleString()}
+                          </span>
+                        </li>
+                      )
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Additive Stage 8 block — sandbox recovery metrics, only when provided */}
+      {data.autonomous_recovery && (
+        <section aria-labelledby="autonomous-recovery-stats-heading">
+          <h2 id="autonomous-recovery-stats-heading" className="text-sm font-semibold text-slate-900">
+            Autonomous recovery (sandbox)
+          </h2>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-center gap-x-10 gap-y-3">
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Attempts</h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                  {data.autonomous_recovery.attempts.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Verified</h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-700">
+                  {data.autonomous_recovery.verified.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Blocked</h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-700">
+                  {data.autonomous_recovery.blocked.toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <h3 className="text-xs font-medium uppercase tracking-wide text-slate-500">Failed</h3>
+                <p className="mt-1 text-2xl font-semibold tabular-nums text-red-600">
+                  {data.autonomous_recovery.failed.toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
