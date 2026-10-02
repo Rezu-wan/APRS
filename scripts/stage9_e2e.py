@@ -52,6 +52,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -418,7 +419,12 @@ def run_security_flow(args) -> list[dict]:
     step("T10 audit as ADMIN / denied for CUSTOMER", _t10)
 
     # ---- T11: secret-leakage sweep -----------------------------------------
+    # 'sk-' is checked as a QUOTED-TOKEN PREFIX (a real provider key
+    # serializes as "sk-..."), not a raw substring: audit resource ids
+    # legitimately contain 'sk-' inside paths like /risk-assessment
+    # (Stage 10 demo traffic writes FORBIDDEN rows with such resource ids).
     def _t11() -> str:
+        sk_token = re.compile(r'"sk-[^"]*"')
         checked = 0
         for label, body in bodies:
             serialized = json.dumps(body)
@@ -426,7 +432,7 @@ def run_security_flow(args) -> list[dict]:
                 if key in serialized:
                     raise ApiError(f"T11: {label} body LEAKS the key value "
                                    f"(never printed here)")
-            if "sk-" in serialized:
+            if sk_token.search(serialized):
                 raise ApiError(f"T11: {label} body contains an 'sk-' string")
             checked += 1
         return f"{checked} response bodies swept, zero leaks"

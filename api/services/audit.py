@@ -38,6 +38,12 @@ AUDIT_FORBIDDEN = "FORBIDDEN"                        # authenticated but role no
 AUDIT_DEMO_RESET = "DEMO_RESET"                      # sandbox ledger reset
 AUDIT_DEMO_SEED = "DEMO_SEED"                        # Stage 10 demo scenario prepare/inject
 AUDIT_RECOVERY_PROCESS = "RECOVERY_PROCESS"          # non-SYSTEM-triggered autonomous recovery
+# Stage 11 research/ops actions (same best-effort contract as above):
+AUDIT_POLICY_SIMULATION = "POLICY_SIMULATION"        # policy simulator run (SYSTEM/ADMIN)
+AUDIT_CHAOS_TEST = "CHAOS_TEST"                      # chaos scenario executed (SYSTEM/ADMIN)
+AUDIT_TEMPORAL_QUERY = "TEMPORAL_QUERY"              # state-at-timestamp historical query (staff)
+AUDIT_GRAPH_ANALYSIS = "GRAPH_ANALYSIS"              # relationship analysis access (staff)
+AUDIT_MODEL_SIGNAL = "MODEL_SIGNAL"                  # behavioral signal access (staff)
 
 _RESULT_ALLOWED = "ALLOWED"
 _RESULT_DENIED = "DENIED"
