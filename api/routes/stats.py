@@ -17,17 +17,25 @@ from sqlalchemy.orm import Session
 
 from api.core.security import require_roles
 from api.db.database import get_db
-from api.db.models import RecoveryDecision, Transaction
+from api.db.models import RecoveryDecision, RiskAssessmentRecord, Transaction
 
 logger = logging.getLogger("payment_recovery.stats")
 
 router = APIRouter(prefix="/api/v1/stats", tags=["stats"])
 
 
+class RiskAssessmentStats(BaseModel):
+    total: int
+    by_anomaly_type: dict[str, int]
+    by_risk_level: dict[str, int]
+    recovery_candidates: int
+
+
 class StatsSummary(BaseModel):
     total: int
     by_state: dict[str, int]
     decisions: dict[str, int]
+    risk_assessments: RiskAssessmentStats
 
 
 @router.get("/summary", response_model=StatsSummary)
@@ -56,8 +64,35 @@ def stats_summary(
     }
 
     total = sum(by_state.values())
+
+    anomaly_rows = db.execute(
+        select(RiskAssessmentRecord.anomaly_type, func.count()).group_by(
+            RiskAssessmentRecord.anomaly_type
+        )
+    ).all()
+    by_anomaly_type = {anomaly: count for anomaly, count in anomaly_rows}
+    risk_level_rows = db.execute(
+        select(RiskAssessmentRecord.risk_level, func.count()).group_by(
+            RiskAssessmentRecord.risk_level
+        )
+    ).all()
+    by_risk_level = {level: count for level, count in risk_level_rows}
+    recovery_candidates = db.scalar(
+        select(func.count()).where(RiskAssessmentRecord.recovery_candidate.is_(True))
+    ) or 0
+
     logger.debug(
-        "stats summary: total=%d states=%d decision_kinds=%d",
-        total, len(by_state), len(observed_decisions),
+        "stats summary: total=%d states=%d decision_kinds=%d assessments=%d",
+        total, len(by_state), len(observed_decisions), sum(by_anomaly_type.values()),
     )
-    return StatsSummary(total=total, by_state=by_state, decisions=decisions)
+    return StatsSummary(
+        total=total,
+        by_state=by_state,
+        decisions=decisions,
+        risk_assessments=RiskAssessmentStats(
+            total=sum(by_anomaly_type.values()),
+            by_anomaly_type=by_anomaly_type,
+            by_risk_level=by_risk_level,
+            recovery_candidates=recovery_candidates,
+        ),
+    )

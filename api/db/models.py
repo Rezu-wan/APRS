@@ -13,6 +13,9 @@ ai_explanations      derived GenAI explanation cache (NON-AUTHORITATIVE) —
                      explanation layer writes
 payment_events       Stage 6 payment-DOMAIN evidence stream (debit/gateway/
                      merchant/settlement) — append-only, replay-safe
+risk_assessments     Stage 7 hybrid risk assessment EVIDENCE (rules + ML),
+                     never an action — history per transaction, fingerprint-
+                     idempotent
 
 Timestamps are timezone-aware UTC. UUIDs are stored as 36-char strings for
 portability across PostgreSQL and SQLite.
@@ -205,6 +208,47 @@ class PaymentEvent(Base):
     reference_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     event_metadata: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+
+    transaction: Mapped[Transaction] = relationship()
+
+
+class RiskAssessmentRecord(Base):
+    """Stage 7 hybrid risk assessment — decision EVIDENCE for Stage 8, never
+    an action. Multiple rows per transaction (history); the latest row
+    matching the current evidence fingerprint is reused instead of
+    re-computing and re-appending to the Digital Twin."""
+
+    __tablename__ = "risk_assessments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    assessment_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    transaction_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("transactions.transaction_id"), index=True
+    )
+    # sha256 over the assessment's input evidence — the idempotency anchor
+    evidence_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    anomaly_type: Mapped[str] = mapped_column(String(32), index=True)
+    risk_level: Mapped[str] = mapped_column(String(16), index=True)
+    risk_score: Mapped[float] = mapped_column(Float)
+    ml_anomaly_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deterministic_risk_score: Mapped[float] = mapped_column(Float)
+    # DECISION EVIDENCE for Stage 8 — Stage 7 never executes recovery
+    recovery_candidate: Mapped[bool] = mapped_column(Boolean)
+    recovery_block_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reconstruction_root_cause: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    reconstruction_confidence: Mapped[float | None] = mapped_column(
+        Float, nullable=True
+    )
+    customer_reported_failure: Mapped[bool] = mapped_column(Boolean, default=False)
+    evidence: Mapped[list] = mapped_column(JSON)
+    triggered_rules: Mapped[list] = mapped_column(JSON)
+    model_version: Mapped[str] = mapped_column(String(32))
+    rule_version: Mapped[str] = mapped_column(String(8))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )

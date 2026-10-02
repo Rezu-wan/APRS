@@ -32,6 +32,7 @@ from api.routes import (
     payment_events,
     recovery,
     reconstruction,
+    risk_assessment,
     stats,
     transactions,
 )
@@ -83,6 +84,7 @@ app.include_router(auth.router)
 app.include_router(stats.router)
 app.include_router(payment_events.router)
 app.include_router(reconstruction.router)
+app.include_router(risk_assessment.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware
