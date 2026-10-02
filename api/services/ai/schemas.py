@@ -52,8 +52,24 @@ class ExplanationContext(BaseModel):
     recovery_decision: str | None = None  # LIMIT_RELEASED | MANUAL_REVIEW | RECOVERY_REJECTED
     recovery_reason: str | None = None
     timeline: list[str] | None = None  # e.g. ["TRANSACTION_CREATED: - -> INITIATED", ...]
+    reconstruction: ReconstructionEvidence | None = None
     language: Language
     audience: Audience
+
+
+class ReconstructionEvidence(BaseModel):
+    """Projection of the Stage 6 deterministic reconstruction into the
+    explanation context — evidence fields only, no confidence internals."""
+
+    root_cause: str
+    failure_stage: str | None = None
+    last_successful_stage: str | None = None
+    customer_debit_status: str
+    gateway_status: str
+    merchant_confirmation_status: str
+    settlement_status: str
+    missing_events: list[str] = []
+    evidence_summary: list[str] = []
 
 
 class ExplanationOutput(BaseModel):

@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from api.core.config import Settings
 from api.core.exceptions import NotFoundError
-from api.db.models import AIExplanation, RecoveryDecision, Transaction
+from api.db.models import AIExplanation, RecoveryDecision, Transaction, utc_now
 from api.services.ai.base import AIProvider, AIProviderError
 from api.services.ai.fallback import fallback_explanation
 from api.services.ai.prompts import PROMPT_VERSION
@@ -42,8 +42,11 @@ from api.services.ai.schemas import (
     ExplanationContext,
     ExplanationResponse,
     Language,
+    ReconstructionEvidence,
 )
 from api.services.digital_twin import get_timeline
+from api.services.event_reconstruction import reconstruct_from_events
+from api.services.payment_event_service import get_payment_events
 
 logger = logging.getLogger("payment_recovery.explanations")
 
@@ -58,17 +61,40 @@ def _risk(p: float) -> str:
     return f"{p:.2f}"
 
 
+def _build_reconstruction(db: Session, tx: Transaction) -> ReconstructionEvidence | None:
+    """Project the Stage 6 deterministic reconstruction into the explanation
+    context. Pure read path: the engine derives everything from stored
+    PaymentEvent facts and never writes. A transaction with no payment-domain
+    events has no reconstruction evidence (explains exactly as before)."""
+    events = get_payment_events(db, tx.transaction_id)
+    if len(events) == 0:
+        return None
+    result = reconstruct_from_events(tx.transaction_id, events, utc_now())
+    return ReconstructionEvidence(
+        root_cause=result.root_cause,
+        failure_stage=result.failure_stage,
+        last_successful_stage=result.last_successful_stage,
+        customer_debit_status=result.customer_debit_status,
+        gateway_status=result.gateway_status,
+        merchant_confirmation_status=result.merchant_confirmation_status,
+        settlement_status=result.settlement_status,
+        missing_events=result.missing_events,
+        evidence_summary=result.evidence_summary,
+    )
+
+
 def build_fingerprint(
     tx: Transaction,
     decision: RecoveryDecision | None,
     language: str,
     audience: str,
+    reconstruction: ReconstructionEvidence | None = None,
 ) -> str:
     """sha256 hex of a stable JSON of every field the explanation depends on.
 
     Any change to the underlying decision, ML assessment, transaction state,
-    prompt version, or the requested language/audience invalidates the cache
-    and forces a fresh generation."""
+    reconstruction evidence, prompt version, or the requested language/audience
+    invalidates the cache and forces a fresh generation."""
     fingerprint_source = {
         "current_state": tx.current_state,
         "failure_reason": tx.failure_reason,
@@ -80,6 +106,21 @@ def build_fingerprint(
         "currency": tx.currency,
         "decision": decision.decision if decision else None,
         "decision_reason": decision.reason if decision else None,
+        "reconstruction": {
+            "root_cause": reconstruction.root_cause if reconstruction else None,
+            "customer_debit_status": (
+                reconstruction.customer_debit_status if reconstruction else None
+            ),
+            "gateway_status": (
+                reconstruction.gateway_status if reconstruction else None
+            ),
+            "merchant_confirmation_status": (
+                reconstruction.merchant_confirmation_status if reconstruction else None
+            ),
+            "settlement_status": (
+                reconstruction.settlement_status if reconstruction else None
+            ),
+        },
         "language": language,
         "audience": audience,
         "prompt_version": PROMPT_VERSION,
@@ -94,6 +135,7 @@ def build_context(
     timeline_events,
     language: str,
     audience: str,
+    reconstruction: ReconstructionEvidence | None = None,
 ) -> ExplanationContext:
     """Map ORM rows onto the controlled provider-facing schema. All numbers
     are pre-formatted here so the model can never recalculate them."""
@@ -116,6 +158,7 @@ def build_context(
             f"{e.event_type}: {e.previous_state or '-'} -> {e.new_state}"
             for e in timeline_events
         ],
+        reconstruction=reconstruction,
         language=Language(language),
         audience=Audience(audience),
     )
@@ -145,7 +188,8 @@ def get_or_create_explanation(
     ).first()
 
     timeline_events = get_timeline(db, transaction_id)
-    fingerprint = build_fingerprint(tx, decision, language, audience)
+    reconstruction = _build_reconstruction(db, tx)
+    fingerprint = build_fingerprint(tx, decision, language, audience, reconstruction)
 
     cached_row = db.scalars(
         select(AIExplanation)
@@ -175,7 +219,9 @@ def get_or_create_explanation(
             generated_at=cached_row.created_at,
         )
 
-    context = build_context(tx, decision, timeline_events, language, audience)
+    context = build_context(
+        tx, decision, timeline_events, language, audience, reconstruction
+    )
 
     started = time.perf_counter()
     is_fallback = False
