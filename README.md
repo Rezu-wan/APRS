@@ -5,8 +5,7 @@ recovery risk with ML, deciding — via a **deterministic policy** — whether t
 auto-release the customer's limit, and recording every state change in an
 **append-only Digital Twin event log**.
 
-Built in three completed stages; GenAI explanation and the operator frontend
-are later stages.
+Built in four completed stages; the operator frontend is a later stage.
 
 > **Honest status / limitations**
 > - **No real payment provider is connected.** `PaymentProvider` is a named
@@ -38,8 +37,8 @@ are later stages.
                                               |                only)       |
                                               +------------|--|------------+
                                                            |  |
-                                       later stages:  GenAI   frontend
-                                       (EXPLAIN decisions only)
+                                     Stage 4: GenAI    frontend
+                                     (EXPLAIN only)    (later stage)
 ```
 
 Flow: the **generator** produces the synthetic dataset; the **ML engine**
@@ -48,9 +47,9 @@ the **FastAPI backend** ingests transaction events, advances each transaction
 through a state machine (`INITIATED -> PROCESSING -> SUCCESS | FAILED/STALLED
 -> RISK_ASSESSED -> RECOVERY_PENDING -> LIMIT_RELEASED | MANUAL_REVIEW |
 RECOVERY_REJECTED`), runs ML assessment on failure, applies the recovery
-policy, and atomically persists state + Digital Twin events. **GenAI and the
-frontend are later stages** — GenAI will only ever *explain* decisions, never
-make them.
+policy, and atomically persists state + Digital Twin events. **GenAI (Stage 4)
+sits strictly AFTER the decision** — it only ever *explains* decisions, never
+makes them; the frontend is the remaining later stage.
 
 Key files:
 
@@ -65,7 +64,8 @@ Key files:
 | `api/services/transaction_service.py` | Ingestion + assessment chaining |
 | `api/services/digital_twin.py` | Append-only event log |
 | `api/services/ml_service.py` | Bridge to the Stage 2 models |
-| `api/db/models.py`, `api/db/migrations/` | SQLAlchemy models + Alembic |
+| `api/services/ai/` | Stage 4 GenAI layer: `base.py` (AIProvider), `openai_provider.py`, `mock_provider.py`, `prompts.py`, `fallback.py`, `schemas.py` |
+| `api/db/models.py`, `api/db/migrations/` | SQLAlchemy models + Alembic (`ai_explanations` table added in Stage 4) |
 
 ## 2. Environment setup
 
@@ -122,6 +122,10 @@ All variables are read by `api/core/config.py` from the environment or a
 | `RECOVERY_MAX_AMOUNT` | `1500` | Policy: max amount eligible for auto-release. |
 | `RECOVERY_MAX_PREVIOUS_FAILURES` | `3` | Policy: max prior failures eligible for auto-release. |
 | `MODEL_DIR` | `models` | Directory containing the Stage 2 joblib artifacts. |
+| `AI_PROVIDER` | `mock` | Stage 4 explanation provider: `mock` \| `openai`. |
+| `OPENAI_API_KEY` | *(empty)* | OpenAI key — server-side only, never sent to any client. |
+| `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model used when `AI_PROVIDER=openai`. |
+| `AI_TIMEOUT_SECONDS` | `12` | Hard cap on provider calls so an explanation can never hang a request. |
 
 Generate real keys for anything beyond local dev:
 
@@ -144,7 +148,182 @@ On startup the app loads the ML artifacts **exactly once** (FastAPI lifespan —
 no retraining, no data generation), checks the DB, and warns if dev keys are
 in use. Verify with `GET /health`.
 
-## 6. Authentication
+## 6. GenAI explanation layer (Stage 4)
+
+### 6.1 Architecture — explanation ONLY
+
+GenAI sits **strictly after the decision**. It receives the already-stored
+recovery decision and produces a human-readable justification for it. It has
+**no code path** to release limits, change transaction state, or modify the
+recovery policy, and explanation generation never runs inside the
+transaction/recovery path — it is strictly on-request afterwards.
+
+```
+Transaction -> ML Engine -> Recovery Policy -> Recovery Decision
+                                    |
+                                    v
+                    Digital Twin / DB (stored decision)
+                                    |
+                                    v
+                     GenAI Explanation (Stage 4, on request)
+```
+
+Concretely: the backend builds a schema-controlled `ExplanationContext` from
+the stored transaction state + decision, renders a versioned prompt
+(`PROMPT_VERSION="v1"`), sends it to the configured provider, validates the
+response, and stores it in the derived `ai_explanations` table. That table is a
+**cache, not an authority** — the authoritative record of what happened remains
+the transaction state and the append-only Digital Twin log.
+
+### 6.2 Provider configuration
+
+Providers are selected by name via `AI_PROVIDER` and produced by the
+`get_ai_provider()` factory in `api/services/ai/`:
+
+- `mock` (default) — a deterministic local provider plus a failing variant for
+  tests. Needs no key, so everything is reproducible offline.
+- `openai` — the real provider via the pinned OpenAI SDK.
+
+Because all providers implement the same `AIProvider` interface
+(`api/services/ai/base.py`), adding Gemini (or any other LLM) means adding one
+new provider class + factory branch — **without touching the recovery service,
+the policy, or any decision path**.
+
+### 6.3 Environment variables
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `AI_PROVIDER` | `mock` | `mock` \| `openai`. |
+| `OPENAI_API_KEY` | *(empty)* | OpenAI secret key. Server-side only — the frontend never sees it. |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Model used when `AI_PROVIDER=openai`. |
+| `AI_TIMEOUT_SECONDS` | `12` | Hard timeout on the provider call; on timeout the fallback template is used. |
+
+### 6.4 Setting up OpenAI (optional)
+
+The default `AI_PROVIDER=mock` needs **no key and no network** — the endpoint
+works fully deterministically out of the box. To exercise the live OpenAI
+path:
+
+1. `pip install -r requirements.txt` (pins `openai==3.23.0`).
+2. Get an API key from https://platform.openai.com/api-keys.
+3. In `.env`, set:
+
+   ```
+   AI_PROVIDER=openai
+   OPENAI_API_KEY=sk-...
+   ```
+
+4. Restart the API. **Honest status:** the OpenAI integration is fully wired
+   (provider, prompts, validation, fallback), but live calls require *your*
+   key and were not exercised during development — the mock provider is the
+   verified path.
+
+### 6.5 API endpoint
+
+`POST /api/v1/explanations/transaction` — roles `SYSTEM`, `ADMIN`, `SUPPORT`
+(`CUSTOMER` excluded for the same IDOR reason as reads: no user-bound identity
+exists yet, so an open customer role could fetch other customers'
+explanations).
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/explanations/transaction \
+  -H "X-API-Key: dev-support-key" -H "Content-Type: application/json" \
+  -d '{"transaction_id": "TXN-123456", "language": "bn", "audience": "customer"}'
+```
+
+Response `200`:
+
+```json
+{
+  "transaction_id": "TXN-123456",
+  "language": "bn",
+  "audience": "customer",
+  "explanation": "আপনার পেমেন্টটি নির্ধারিত সময়ের মধ্যে গেটওয়ে সাড়া না পাওয়ায় সম্পন্ন হয়নি। সিস্টেম লেনদেনটি পর্যালোচনা করে পুনরুদ্ধারের জন্য নিরাপদ বলে নিশ্চিত হয়েছে। তাই আপনার সাময়িকভাবে আটকে থাকা লিমিট পুনরায় চালু করা হয়েছে।",
+  "provider": "mock",
+  "model": "mock",
+  "prompt_version": "v1",
+  "is_fallback": false,
+  "cached": false,
+  "generated_at": "2026-10-02T10:25:00Z"
+}
+```
+
+**Caching:** the `ai_explanations` table stores generated explanations keyed by
+(transaction state, decision, language, audience, `prompt_version`). An
+identical request replays the stored explanation with `cached: true` — no new
+provider call, no new cost, and the answer stays consistent.
+
+### 6.6 Support-audience example (English)
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/explanations/transaction \
+  -H "X-API-Key: dev-admin-key" -H "Content-Type: application/json" \
+  -d '{"transaction_id": "TXN-123456", "language": "en", "audience": "support"}'
+```
+
+```json
+{
+  "transaction_id": "TXN-123456",
+  "language": "en",
+  "audience": "support",
+  "explanation": "Payment timed out at the gateway and failed after 3 retries. The ML assessment scored risk at 0.21 with a 94% probability that release is safe, so the deterministic policy auto-released the held limit (decision: LIMIT_RELEASED). No manual action is required; the customer has been notified.",
+  "provider": "mock",
+  "model": "mock",
+  "prompt_version": "v1",
+  "is_fallback": false,
+  "cached": false,
+  "generated_at": "2026-10-02T10:27:00Z"
+}
+```
+
+The support/system audiences receive the full context (risk score,
+probabilities, timeline); the `customer` audience gets a **stripped payload**
+with all of those removed — see 6.8.
+
+### 6.7 Fallback behavior
+
+The endpoint **never fails because of the AI provider**. Any provider failure —
+timeout, rate limit, bad key, malformed output, empty response, or provider not
+configured — falls back to a **deterministic template explanation** built from
+the backend's own stored data. The response is then marked `is_fallback: true`
+(and stored in the cache like any other, so replays stay stable). Fallback
+templates never fabricate facts: they can only restate the recorded decision,
+the reason, and pre-formatted amounts — nothing else.
+
+### 6.8 Security model
+
+- **API key stays server-side.** `OPENAI_API_KEY` is read only by the backend;
+  it is never returned by any endpoint and never reaches the frontend.
+- **Controlled context.** The LLM receives only the schema-controlled
+  `ExplanationContext` — never raw request bodies, never database dumps.
+- **Audience-filtered payloads.** The `customer` audience gets a stripped
+  context: no `risk_score`, no probabilities, no timeline.
+- **Pre-formatted numbers.** Amounts, probabilities and scores are formatted by
+  the backend before prompting, so the LLM cannot mangle them.
+- **No invention.** Prompts explicitly forbid inventing facts beyond the
+  provided context.
+- **Response validation.** Provider output is validated (including length
+  caps) before it is returned or cached; invalid output triggers the fallback.
+
+### 6.9 Why GenAI cannot make recovery decisions
+
+This is a design invariant, not a convention:
+
+- **The decision is deterministic and auditable.** `LIMIT_RELEASED` /
+  `MANUAL_REVIEW` / `RECOVERY_REJECTED` come from the pure policy function in
+  `api/services/recovery_policy.py` (section 10), with a `policy_snapshot`
+  stored on every decision.
+- **LLM output is non-deterministic.** The same prompt can yield different
+  wording on different calls; a financial action must be reproducible byte for
+  byte in an audit trail. An explanation can vary — a release limit cannot.
+- **GenAI receives the decision, it does not produce one.** The explanation
+  prompt contains the already-stored decision and its recorded reason.
+- **There is no code path.** The GenAI layer has no access to state-machine
+  transitions, recovery operations, or policy parameters. It cannot release a
+  limit, revert a state, or influence a future decision — not by prompt
+  injection, not by malformed output, not by configuration.
+
+## 7. Authentication
 
 Every endpoint except `/health` requires the `X-API-Key` header. Each key maps
 to exactly one role; roles come from the environment (section 4).
@@ -153,7 +332,7 @@ to exactly one role; roles come from the environment (section 4).
 |---|---|---|
 | `SYSTEM` | `dev-system-key` | ingest events, recovery, read transactions/timelines |
 | `ADMIN` | `dev-admin-key` | ingest events, recovery, read transactions/timelines |
-| `SUPPORT` | `dev-support-key` | read transactions/timelines only |
+| `SUPPORT` | `dev-support-key` | read transactions/timelines, request explanations (section 6) |
 | `CUSTOMER` | `dev-customer-key` | nothing yet — reads are excluded until identity is user-bound (no ownership scoping exists; unscoped reads would leak other customers' data) |
 
 Missing or unknown key -> `401`; valid key, wrong role -> `403`:
@@ -169,14 +348,14 @@ Missing or unknown key -> `401`; valid key, wrong role -> `403`:
 > deliberate foundation: swapping in JWT/OAuth2 later means changing only
 > `get_auth_context`, not the routes.
 
-## 7. API reference
+## 8. API reference
 
 Base URL: `http://127.0.0.1:8000`. Error shape everywhere:
 `{"error": {"code": "...", "message": "..."}}` (400 invalid transition,
 401 auth, 403 role, 404 not found, 409 conflict, 422 validation, 503 ML not
 loaded).
 
-### 7.1 `POST /api/v1/transaction/event` — ingest an event (SYSTEM, ADMIN)
+### 8.1 `POST /api/v1/transaction/event` — ingest an event (SYSTEM, ADMIN)
 
 Advances the transaction through the state machine (one Digital Twin event per
 hop), runs the ML assessment when the outcome is `FAILED` (a `STALLED`
@@ -234,9 +413,9 @@ RECOVERY_PENDING` with an ML assessment attached:
 `Timeout`, `Merchant Disconnect`, `Insufficient Balance`, `Network Drop`,
 `Gateway Error`.
 
-### 7.2 `POST /api/v1/recovery/release-limit` — recovery decision (SYSTEM, ADMIN)
+### 8.2 `POST /api/v1/recovery/release-limit` — recovery decision (SYSTEM, ADMIN)
 
-Runs the deterministic policy (section 9). The decision comes from the
+Runs the deterministic policy (section 10). The decision comes from the
 policy applied to the ML assessment — never from the caller, never from GenAI.
 Idempotent: calling on an already-decided transaction replays the stored
 decision (`already_applied: true`) with no side effects.
@@ -326,7 +505,7 @@ on recovery decisions is the source of truth, and the race loser replays the
 winner's decision. Calling on a non-recoverable transaction (e.g. `SUCCESS`,
 still `PROCESSING`) returns `409`.
 
-### 7.3 `GET /api/v1/transactions/{transaction_id}` (all roles)
+### 8.3 `GET /api/v1/transactions/{transaction_id}` (all roles)
 
 ```bash
 curl http://127.0.0.1:8000/api/v1/transactions/TXN-123456 \
@@ -358,7 +537,7 @@ curl http://127.0.0.1:8000/api/v1/transactions/TXN-123456 \
 }
 ```
 
-### 7.4 `GET /api/v1/transactions/{transaction_id}/timeline` (all roles)
+### 8.4 `GET /api/v1/transactions/{transaction_id}/timeline` (all roles)
 
 The Digital Twin view: every state hop, in order.
 
@@ -383,7 +562,7 @@ curl http://127.0.0.1:8000/api/v1/transactions/TXN-123456/timeline \
 }
 ```
 
-### 7.5 `GET /health` — no auth
+### 8.5 `GET /health` — no auth
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -398,7 +577,7 @@ Healthy:
 Degraded (DB down or models not loaded) returns HTTP `503` with
 `"status": "degraded"`.
 
-## 8. ML integration
+## 9. ML integration
 
 - **Models are loaded ONCE at startup** (FastAPI lifespan in `api/main.py`
   calls `MLService.load()`, which reads `models/*.joblib` via
@@ -417,7 +596,7 @@ Degraded (DB down or models not loaded) returns HTTP `503` with
   preprocessing uses `OneHotEncoder(handle_unknown='ignore')` plus imputers,
   so odd client input cannot crash the API.
 
-## 9. Recovery workflow
+## 10. Recovery workflow
 
 The decision is a **pure, auditable function** of (ML assessment, transaction
 attributes, policy parameters) in `api/services/recovery_policy.py`. First
@@ -436,10 +615,10 @@ retraining. Each stored decision also embeds a `policy_snapshot` of the exact
 parameters in force, so past decisions stay auditable after thresholds change.
 
 **GenAI will only ever EXPLAIN decisions, never make them.** The decision
-comes from the policy alone; a later GenAI stage will produce human-readable
+comes from the policy alone; Stage 4 (section 6) produces human-readable
 justifications for the decisions this system already recorded.
 
-## 10. Digital Twin
+## 11. Digital Twin
 
 - The event log is **append-only**: one `digital_twin_events` row per state
   hop, never updated or deleted.
@@ -447,12 +626,12 @@ justifications for the decisions this system already recorded.
   a transaction is never seen in a state without its events, and vice versa.
 - Each event records `event_type`, `previous_state`, `new_state`, the ML
   assessment (on `ML_RISK_ASSESSED`), the reason, and metadata (e.g. who
-  decided, the policy snapshot). See the timeline example in section 7.4 for a
+  decided, the policy snapshot). See the timeline example in section 8.4 for a
   failed-then-released transaction:
   `INITIATED -> PROCESSING -> FAILED -> RISK_ASSESSED -> RECOVERY_PENDING ->
   LIMIT_RELEASED`.
 
-## 11. Docker
+## 12. Docker
 
 ```bash
 docker compose up --build
@@ -472,7 +651,7 @@ API_KEY_SYSTEM=... API_KEY_ADMIN=... API_KEY_SUPPORT=... API_KEY_CUSTOMER=...
 > SQLite setup (section 3) is the verified path. Apply migrations inside the
 > container on first run: `docker compose exec api python -m alembic upgrade head`.
 
-## 12. Tests
+## 13. Tests
 
 ```bash
 python -m pytest tests/ -q
@@ -481,7 +660,7 @@ python -m pytest tests/ -q
 Tests cover the state machine, the recovery policy table, idempotent replay,
 auth/role enforcement, and the API endpoints against the SQLite dev database.
 
-## 13. Stage reference (ML engine, standalone)
+## 14. Stage reference (ML engine, standalone)
 
 Stages 1–2 also run standalone:
 

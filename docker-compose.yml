@@ -8,6 +8,10 @@ services:
       API_KEY_ADMIN: ${API_KEY_ADMIN:?set API_KEY_ADMIN in .env}
       API_KEY_SUPPORT: ${API_KEY_SUPPORT:?set API_KEY_SUPPORT in .env}
       API_KEY_CUSTOMER: ${API_KEY_CUSTOMER:?set API_KEY_CUSTOMER in .env}
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      AI_TIMEOUT_SECONDS: ${AI_TIMEOUT_SECONDS:-12}
     depends_on:
       postgres:
         condition: service_healthy

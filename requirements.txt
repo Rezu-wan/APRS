@@ -24,6 +24,9 @@ alembic==1.20.0
 psycopg[binary]==3.3.6
 python-dotenv==1.2.4
 
+# --- Stage 4: GenAI explanation layer (pinned for reproducibility) ------------
+openai==3.23.0
+
 # --- tests --------------------------------------------------------------------
 pytest==9.1.1
 httpx==0.28.1
