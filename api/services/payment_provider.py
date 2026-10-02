@@ -192,7 +192,10 @@ class MockPaymentProvider(PaymentProvider):
     def restore_from(self, store) -> None:
         """Seed the in-memory ledger from a persistence store (startup
         restore / restart semantics). Held amounts are restored as-is;
-        available_limit = INITIAL - sum(held). Entries already in memory
+        available_limit = INITIAL - sum(held - released), mirroring live
+        operation where release_limit returns freed funds to the available
+        limit (Stage 10 fix: a restart no longer loses the releases and the
+        balance cannot silently drift negative). Entries already in memory
         win — a live hold is never overwritten by a stale persisted row."""
         try:
             entries = store.load_all()
@@ -213,7 +216,9 @@ class MockPaymentProvider(PaymentProvider):
                     "currency": raw.get("currency") or "BDT",
                 }
                 self._ledger[tid] = entry
-                self._available_limit -= entry["held_amount"]
+                self._available_limit -= (
+                    entry["held_amount"] - entry["released_amount"]
+                )
 
     # -- provider operations ----------------------------------------------
 
@@ -321,6 +326,16 @@ class MockPaymentProvider(PaymentProvider):
         with self._lock:
             entry = self._ledger.get(transaction_id)
             return dict(entry) if entry is not None else None
+
+    def ledger_snapshot(self) -> list[dict]:
+        """Read accessor for ALL in-memory SIMULATED ledger entries (one dict
+        per transaction, copied under the lock). Defined on the mock only,
+        NOT the ABC: the factory (get_payment_provider) can only ever return
+        a MockPaymentProvider — "mock" is the sole implementation — so the
+        demo/sandbox routes can rely on it without widening the provider
+        contract real providers would have to satisfy."""
+        with self._lock:
+            return [dict(entry) for entry in self._ledger.values()]
 
     @property
     def available_limit(self) -> float:

@@ -69,7 +69,10 @@ def test_restart_semantics_restore_from_store() -> None:
     assert entry is not None, "held state must survive a provider restart"
     assert entry["held_amount"] == 400.0
     assert entry["released_amount"] == 150.0
-    assert rebooted.available_limit == MockPaymentProvider.INITIAL_LIMIT - 400.0
+    # Stage 10: restore mirrors live operation — only the still-encumbered
+    # portion (held - released) reduces the available limit, exactly like a
+    # release returning funds does before the restart.
+    assert rebooted.available_limit == MockPaymentProvider.INITIAL_LIMIT - 250.0
 
     # a subsequent release on the restored instance moves held -> released
     result = rebooted.release_limit(
