@@ -69,6 +69,86 @@ _EN_ROOT_CAUSES = {
 }
 
 
+# Stage 7 anomaly types -> humanized English label. Fixed map: the
+# classification comes from the deterministic rules engine, so its rendering
+# is deterministic too.
+_EN_ANOMALY_TYPES = {
+    "GENUINE_FAILURE": "genuine transaction failure",
+    "DOUBLE_DEDUCTION": "double deduction",
+    "DUPLICATE_TRANSACTION": "duplicate transaction",
+    "SUCCESSFUL_BUT_UNCONFIRMED": "successful but unconfirmed",
+    "FALSE_COMPLAINT": "possible false complaint",
+    "SUSPICIOUS": "suspicious",
+    "INCOMPLETE": "incomplete information",
+    "UNKNOWN": "unknown",
+    "NONE": "no anomaly detected",
+}
+
+# Stage 7 anomaly types -> natural Bangla label.
+_BN_ANOMALY_TYPES = {
+    "GENUINE_FAILURE": "সত্যিকারের লেনদেন ব্যর্থতা",
+    "DOUBLE_DEDUCTION": "দ্বিগুণ ডেবিট",
+    "DUPLICATE_TRANSACTION": "ডুপ্লিকেট লেনদেন",
+    "SUCCESSFUL_BUT_UNCONFIRMED": "সফল কিন্তু নিশ্চিতকরণবিহীন",
+    "FALSE_COMPLAINT": "সম্ভাব্য ভুল অভিযোগ",
+    "SUSPICIOUS": "সন্দেহজনক",
+    "INCOMPLETE": "অসম্পূর্ণ তথ্য",
+    "UNKNOWN": "অজানা",
+    "NONE": "কোনো অসঙ্গতি নেই",
+}
+
+
+def _risk_line(context: ExplanationContext) -> str | None:
+    """Deterministic classification line for SUPPORT audiences from the Stage 7
+    risk assessment, or None when no assessment is attached. The classification
+    is REPORTED verbatim (it belongs to the rules engine), never re-derived."""
+    ra = context.risk_assessment
+    if ra is None:
+        return None
+    if context.language == Language.BN:
+        anomaly = _BN_ANOMALY_TYPES.get(ra.anomaly_type, ra.anomaly_type)
+        eligibility = (
+            "যোগ্য — পুনরুদ্ধার সিদ্ধান্ত অপেক্ষমাণ"
+            if ra.recovery_candidate
+            else "যোগ্য নয়"
+        )
+        if not ra.recovery_candidate and ra.recovery_block_reason:
+            eligibility += f" — {ra.recovery_block_reason}"
+        return (
+            f"অসঙ্গতি শ্রেণিবিন্যাস: {anomaly} (ঝুঁকির স্তর: {ra.risk_level})। "
+            f"পুনরুদ্ধারের যোগ্যতা: {eligibility}।"
+        )
+    anomaly = _EN_ANOMALY_TYPES.get(ra.anomaly_type, ra.anomaly_type)
+    eligibility = (
+        "eligible — pending recovery decision"
+        if ra.recovery_candidate
+        else "not eligible"
+    )
+    if not ra.recovery_candidate and ra.recovery_block_reason:
+        eligibility += f" — {ra.recovery_block_reason}"
+    return (
+        f"Anomaly classification: {anomaly} (risk level: {ra.risk_level}). "
+        f"Recovery eligibility: {eligibility}."
+    )
+
+
+def _customer_review_line(context: ExplanationContext) -> str | None:
+    """Neutral review-status line for CUSTOMER audiences when a risk assessment
+    exists. Deliberately contains NO anomaly terminology — customers get
+    review status only, never raw classifications."""
+    if context.risk_assessment is None:
+        return None
+    if context.language == Language.BN:
+        return (
+            "আপনার লেনদেনটি পেমেন্ট সিস্টেমের প্রমাণের ভিত্তিতে মূল্যায়ন করা "
+            "হচ্ছে। পুনরুদ্ধারের যোগ্যতা: পর্যালোচনাধীন।"
+        )
+    return (
+        "Your transaction is being evaluated using payment-system evidence. "
+        "Recovery eligibility: under review."
+    )
+
+
 def _root_cause_sentence(context: ExplanationContext) -> str | None:
     """Deterministic first sentence for the reconstruction evidence, or None
     when no reconstruction is attached to the context."""
@@ -209,6 +289,16 @@ def fallback_explanation(context: ExplanationContext) -> str:
     root_cause_sentence = _root_cause_sentence(context)
     if root_cause_sentence:
         text = f"{root_cause_sentence} {text}"
+    # Stage 7 risk assessment is likewise deterministic engine output. Support
+    # sees the classification; customers see only a neutral review-status line.
+    risk_line = _risk_line(context) if context.audience != Audience.CUSTOMER else None
+    if risk_line:
+        text = f"{risk_line} {text}"
+    review_line = (
+        _customer_review_line(context) if context.audience == Audience.CUSTOMER else None
+    )
+    if review_line:
+        text = f"{text} {review_line}"
     logger.debug(
         "fallback explanation built: tx=%s lang=%s audience=%s",
         context.transaction_id,

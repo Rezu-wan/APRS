@@ -19,6 +19,11 @@ from api.core.payment_lifecycle import (
 )
 from api.db.database import engine
 from api.db.models import PaymentEvent
+
+try:  # Stage 7 model may land after this test file; guarded below.
+    from api.db.models import RiskAssessmentRecord
+except ImportError:  # pragma: no cover
+    RiskAssessmentRecord = None
 from api.main import app
 from api.services.ai import get_ai_provider
 from api.services.ai.mock_provider import FailingMockProvider
@@ -76,7 +81,7 @@ def test_customer_bangla_explanation_from_mock_provider(client):
     assert body["explanation"].strip() != ""
     assert _has_bengali(body["explanation"])
     assert body["provider"] == "mock"
-    assert body["prompt_version"] == "v2"
+    assert body["prompt_version"] == "v3"
     assert body["is_fallback"] is False
     assert body["cached"] is False
 
@@ -229,6 +234,68 @@ def test_explanation_without_payment_events_unchanged(client):
     assert body["explanation"].strip() != ""
     assert "Root cause:" not in body["explanation"]
     assert "The payment flow is incomplete" not in body["explanation"]
+
+
+def _insert_risk_assessment(tid: str) -> None:
+    """Insert a minimal RiskAssessmentRecord directly via the same engine
+    conftest pins — the explanation path is read-only, so the record is
+    planted as if the Stage 7 engine had already produced it."""
+    if RiskAssessmentRecord is None:  # pragma: no cover - guarded by skipif
+        pytest.skip("RiskAssessmentRecord model not available yet")
+    with Session(bind=engine) as db:
+        db.add(
+            RiskAssessmentRecord(
+                assessment_id=str(uuid.uuid4()),
+                transaction_id=tid,
+                anomaly_type="GENUINE_FAILURE",
+                risk_level="LOW",
+                risk_score=0.2,
+                ml_anomaly_score=0.15,
+                deterministic_risk_score=0.2,
+                recovery_candidate=True,
+                recovery_block_reason=None,
+                triggered_rules=[],
+                evidence=[],
+                model_version="synthetic-v1",
+                rule_version="1",
+                customer_reported_failure=False,
+                evidence_fingerprint="test",
+            )
+        )
+        db.commit()
+
+
+@pytest.mark.skipif(
+    RiskAssessmentRecord is None,
+    reason="Stage 7 RiskAssessmentRecord model not available yet",
+)
+def test_risk_assessment_projected_into_explanations(client):
+    """With a stored Stage 7 assessment, the SUPPORT/en explanation reports
+    the classification faithfully while the CUSTOMER/bn explanation stays
+    neutral — no anomaly type, no 'anomaly' wording, only review status."""
+    tid = _unique_id("TXN-RISK")
+    _released_tx(client, tid)
+    _insert_risk_assessment(tid)
+
+    app.dependency_overrides[get_ai_provider] = lambda: FailingMockProvider()
+    try:
+        support = _explain(client, tid, language="en", audience="support",
+                           headers=SUPPORT_KEY)
+        customer = _explain(client, tid, language="bn", audience="customer")
+    finally:
+        app.dependency_overrides.pop(get_ai_provider, None)
+
+    assert support.status_code == 200
+    assert "Anomaly classification:" in support.json()["explanation"]
+
+    assert customer.status_code == 200
+    customer_text = customer.json()["explanation"]
+    assert "GENUINE_FAILURE" not in customer_text
+    assert "anomaly" not in customer_text.lower()
+    assert (
+        "আপনার লেনদেনটি পেমেন্ট সিস্টেমের প্রমাণের ভিত্তিতে মূল্যায়ন করা হচ্ছে। "
+        "পুনরুদ্ধারের যোগ্যতা: পর্যালোচনাধীন।" in customer_text
+    )
 
 
 def test_explanations_never_mutate_transaction_state(client):

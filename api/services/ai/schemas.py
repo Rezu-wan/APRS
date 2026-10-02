@@ -53,8 +53,20 @@ class ExplanationContext(BaseModel):
     recovery_reason: str | None = None
     timeline: list[str] | None = None  # e.g. ["TRANSACTION_CREATED: - -> INITIATED", ...]
     reconstruction: ReconstructionEvidence | None = None
+    risk_assessment: RiskAssessmentEvidence | None = None
     language: Language
     audience: Audience
+
+
+class RiskAssessmentEvidence(BaseModel):
+    """Projection of the Stage 7 assessment into the explanation context."""
+
+    anomaly_type: str
+    risk_level: str
+    recovery_candidate: bool
+    recovery_block_reason: str | None = None
+    triggered_rules: list[str] = []      # rule names only
+    reconstruction_root_cause: str | None = None
 
 
 class ReconstructionEvidence(BaseModel):

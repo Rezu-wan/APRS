@@ -19,6 +19,7 @@ from api.services.ai.schemas import (
     ExplanationContext,
     Language,
     ReconstructionEvidence,
+    RiskAssessmentEvidence,
 )
 
 
@@ -183,6 +184,145 @@ def test_build_messages_support_payload_includes_full_reconstruction():
     assert "evidence_summary" in serialized
     assert "missing_events" in serialized
     assert "Gateway timed out." in serialized
+
+
+def _risk_assessment(**overrides) -> RiskAssessmentEvidence:
+    payload = {
+        "anomaly_type": "GENUINE_FAILURE",
+        "risk_level": "LOW",
+        "recovery_candidate": True,
+        "recovery_block_reason": None,
+        "triggered_rules": ["clean-failure"],
+        "reconstruction_root_cause": "GATEWAY_TIMEOUT",
+    }
+    payload.update(overrides)
+    return RiskAssessmentEvidence(**payload)
+
+
+def test_build_messages_customer_payload_excludes_risk_assessment_entirely():
+    """Stage 7: the ENTIRE risk_assessment object is stripped from CUSTOMER
+    payloads — customers must never receive anomaly data, classifications, or
+    even the word 'anomaly' from the model's data."""
+    context = _context(
+        audience=Audience.CUSTOMER,
+        language=Language.EN,
+        risk_assessment=_risk_assessment(anomaly_type="FALSE_COMPLAINT"),
+    )
+    messages = build_messages(context)
+    user_payload = json.dumps(
+        [m for m in messages if m["role"] != "system"], ensure_ascii=False
+    )
+
+    assert "risk_assessment" not in user_payload
+    assert "FALSE_COMPLAINT" not in user_payload
+    assert "anomaly" not in user_payload.lower()
+    assert "possible false complaint" not in user_payload.lower()
+
+
+def test_build_messages_support_payload_includes_risk_assessment():
+    """For a SUPPORT audience the full classification is present in the
+    payload — support-facing output may include the classification."""
+    context = _context(
+        audience=Audience.SUPPORT,
+        language=Language.EN,
+        risk_assessment=_risk_assessment(),
+    )
+    messages = build_messages(context)
+    serialized = json.dumps(messages, ensure_ascii=False)
+
+    assert "risk_assessment" in serialized
+    assert "GENUINE_FAILURE" in serialized
+    assert "clean-failure" in serialized
+
+
+def test_fallback_risk_assessment_support_en_reports_classification_and_eligibility():
+    """The support/en fallback prepends a faithful classification line from the
+    deterministic rules engine, including recovery eligibility."""
+    context = _context(
+        audience=Audience.SUPPORT,
+        language=Language.EN,
+        risk_assessment=_risk_assessment(),
+    )
+    text = fallback_explanation(context)
+
+    assert "Anomaly classification: genuine transaction failure (risk level: LOW)." in text
+    assert "Recovery eligibility: eligible — pending recovery decision." in text
+
+
+def test_fallback_risk_assessment_support_en_reports_block_reason():
+    """When not a recovery candidate, a present block reason is surfaced."""
+    context = _context(
+        audience=Audience.SUPPORT,
+        language=Language.EN,
+        risk_assessment=_risk_assessment(
+            recovery_candidate=False, recovery_block_reason="duplicate debit detected"
+        ),
+    )
+    text = fallback_explanation(context)
+
+    assert "Anomaly classification:" in text
+    assert "Recovery eligibility: not eligible — duplicate debit detected." in text
+
+
+def test_fallback_risk_assessment_support_bn_reports_classification_and_eligibility():
+    """The support/bn fallback reports the classification in natural Bangla."""
+    context = _context(
+        audience=Audience.SUPPORT,
+        language=Language.BN,
+        risk_assessment=_risk_assessment(),
+    )
+    text = fallback_explanation(context)
+
+    assert "অসঙ্গতি শ্রেণিবিন্যাস: সত্যিকারের লেনদেন ব্যর্থতা (ঝুঁকির স্তর: LOW)" in text
+    assert "পুনরুদ্ধারের যোগ্যতা: যোগ্য — পুনরুদ্ধার সিদ্ধান্ত অপেক্ষমাণ" in text
+
+
+def test_fallback_risk_assessment_customer_is_neutral_no_anomaly_terminology():
+    """Customer fallbacks (bn + en) carry ONLY the neutral review line — no
+    anomaly type, no classification, no risk level, no accusatory language."""
+    en_context = _context(
+        audience=Audience.CUSTOMER,
+        language=Language.EN,
+        risk_assessment=_risk_assessment(anomaly_type="FALSE_COMPLAINT"),
+    )
+    en_text = fallback_explanation(en_context)
+    assert (
+        "Your transaction is being evaluated using payment-system evidence. "
+        "Recovery eligibility: under review." in en_text
+    )
+    lowered = en_text.lower()
+    assert "anomaly" not in lowered
+    assert "false complaint" not in lowered
+    assert "fraud" not in lowered
+    assert "risk level" not in lowered
+
+    bn_context = _context(
+        audience=Audience.CUSTOMER,
+        language=Language.BN,
+        risk_assessment=_risk_assessment(anomaly_type="FALSE_COMPLAINT"),
+    )
+    bn_text = fallback_explanation(bn_context)
+    assert (
+        "আপনার লেনদেনটি পেমেন্ট সিস্টেমের প্রমাণের ভিত্তিতে মূল্যায়ন করা হচ্ছে। "
+        "পুনরুদ্ধারের যোগ্যতা: পর্যালোচনাধীন।" in bn_text
+    )
+    assert "সম্ভাব্য ভুল অভিযোগ" not in bn_text
+    assert "ঝুঁকির স্তর" not in bn_text
+
+
+def test_fallback_without_risk_assessment_outputs_unchanged():
+    """Regression guard: with risk_assessment absent every fallback output is
+    byte-identical to the pre-Stage-7 templates — no review line, no
+    classification line, no crash."""
+    for language in (Language.BN, Language.EN):
+        for audience in (Audience.CUSTOMER, Audience.SUPPORT):
+            context = _context(language=language, audience=audience)
+            text = fallback_explanation(context)
+            assert "Anomaly classification:" not in text
+            assert "payment-system evidence" not in text
+            assert "পেমেন্ট সিস্টেমের প্রমাণের ভিত্তিতে" not in text
+            assert "পুনরুদ্ধারের যোগ্যতা" not in text
+            assert text.strip() != ""
 
 
 def test_openai_provider_without_api_key_raises_unavailable():

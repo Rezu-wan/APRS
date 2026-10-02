@@ -22,7 +22,7 @@ from api.services.ai.schemas import Audience, ExplanationContext
 
 logger = logging.getLogger("payment_recovery.ai.prompts")
 
-PROMPT_VERSION = "v2"
+PROMPT_VERSION = "v3"
 
 SYSTEM_PROMPT = """\
 You are an explanation assistant for a payment recovery system. You do not make financial decisions.
@@ -39,6 +39,11 @@ convert, or recompute them.
 - If reconstruction evidence is provided, it is DETERMINISTIC system output \
 and authoritative: report it faithfully, do not re-derive, reinterpret, or \
 contradict it. The audience filtering still applies.
+- If a risk assessment is provided it is the output of a deterministic \
+rules engine: report its classification and recovery eligibility \
+faithfully; do not re-derive, soften, or escalate it, and do not use the \
+words "fraud" or "fraudulent" about any person — describe classifications \
+neutrally (e.g. "flagged for manual review").
 - Output plain text only: no JSON, no markdown, no headers, no bullet lists.
 - For customer audience: at most 4 short sentences, non-technical, no ML \
 jargon (never say "XGBoost", "classifier", "probability", "model", "score").
@@ -46,8 +51,15 @@ jargon (never say "XGBoost", "classifier", "probability", "model", "score").
 English output must be clear and professional.\
 """
 
-# Fields that must NEVER reach a customer-facing prompt.
-_CUSTOMER_EXCLUDED_FIELDS = ("risk_score", "safe_to_release_probability", "timeline")
+# Fields that must NEVER reach a customer-facing prompt. risk_assessment is
+# excluded ENTIRELY: customers get review status only through neutral
+# fallback/template phrasing, never raw anomaly data or classifications.
+_CUSTOMER_EXCLUDED_FIELDS = (
+    "risk_score",
+    "safe_to_release_probability",
+    "timeline",
+    "risk_assessment",
+)
 
 # Reconstruction fields excluded from CUSTOMER payloads, ON TOP of the general
 # exclusions above. evidence_summary and the stage statuses ARE
