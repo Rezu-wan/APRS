@@ -1508,3 +1508,86 @@ including a secret-leakage sweep) against a live API; unit coverage in
 `test_request_ids.py`, `test_audit.py`, `test_event_conflicts.py`,
 `test_sandbox_persistence.py`, `test_ml_genai_failure_modes.py`,
 `test_recovery_concurrency_hard.py`.
+
+## 20. Hackathon readiness & demo engineering (Stage 10)
+
+Stage 10 adds no new business capability. It makes the finished Stage 1–9
+system **demoable**: a judge can follow one transaction — debit, gateway
+timeout, reconstruction, risk, policy, safety gate, sandbox execution,
+verification, customer explanation — without reading code. The standing
+disclaimers are unchanged and louder than ever: **simulated sandbox, no real
+money moves; all models trained on 100% synthetic data.** The theme:
+*automate recovery without automating trust.*
+
+### 20.1 Demo control (backend)
+
+- `api/services/demo_scenarios.py` is the single source of truth for the six
+  deterministic scenarios (`DEMO-S1..S6`): fixtures, event chains, fixed
+  timestamps, and the expected outcome of each. `scripts/seed_demo.py` now
+  imports from it (CLI behavior preserved; S5 is redefined as the
+  **settlement race** — prepare, then inject a late `SETTLEMENT_CONFIRMED`
+  event, then process → the fresh-evidence safety gate blocks).
+- `POST /api/v1/demo/scenarios/{key}/prepare` (SYSTEM/ADMIN) creates the
+  transaction + event evidence + risk assessment **through the same services
+  as the public API and never runs recovery** — there is no demo endpoint
+  that bypasses the engine; the panel drives the real
+  `/recovery/process`. `POST /api/v1/demo/scenarios/S5/inject-late-settlement`
+  adds the race evidence (S5-only). `POST /api/v1/demo/reset` purges all
+  `DEMO-S*` rows in FK-safe order, resets the sandbox ledger, re-prepares all
+  six, and writes a `DEMO_RESET` audit row. `GET /api/v1/demo/scenarios` and
+  `GET /api/v1/demo/status` (staff) report live state and a console health
+  block (database / ML / GenAI / sandbox provider). `GET /api/v1/sandbox/ledger`
+  (staff) exposes the simulated ledger. All demo mutations are audited
+  (`DEMO_SEED` / `DEMO_RESET`) and rate-limited (60/min bucket).
+- One real fix fell out of demo verification: the sandbox ledger **restore**
+  subtracted full holds even for released entries, so a restart drifted the
+  simulated balance negative. Restore now mirrors live operation
+  (`INITIAL − Σ(held − released)`); the pinned persistence test was updated.
+
+### 20.2 Judge-facing frontend
+
+- **`/demo` — Demo Mode panel** (staff; actions SYSTEM/ADMIN): six scenario
+  cards with live status, Prepare / Inject-late-settlement buttons, deep
+  links to the transaction pages, and a confirmed **Reset demo** action
+  ("affects simulated data only").
+- **`/status` — System status console:** API / database / ML / GenAI /
+  sandbox provider dots, with the honest `FALLBACK MODE` state when the AI
+  provider is unavailable (the demo continues on deterministic fallback
+  explanations).
+- **Transaction page story:** a 7-step recovery pipeline strip (EVENTS → … →
+  VERIFICATION) with the final chip `VERIFIED` / `BLOCKED`; an 8-row
+  **safety gate checklist** derived only from real data (unknown → "—",
+  never a fabricated ✓); a prominent **verification card**; the **simulated
+  sandbox ledger** card; and structured **RECOVERY BLOCKED** reasons
+  (reason / action / provider NOT CALLED) instead of a bare "failed".
+- **Separation of concerns, visible:** the recovery panel is labeled a
+  *deterministic decision* ("No AI involvement"); the explanation card is
+  labeled *AI explanation* with a Customer view / Support view chip and a
+  footer stating it never authorizes or changes a recovery outcome.
+- **App chrome:** a permanent top banner **"SIMULATED SANDBOX — NO REAL
+  MONEY MOVES"**, a dashboard hero + "How it works" 8-step explainer, and an
+  opt-in **Judge mode** toggle (enlarges the pipeline / gate / verification,
+  hides distractions; same real UI, same real backend).
+
+### 20.3 Demo tooling & documents
+
+- `py -m scripts.stage10_demo_check` — pre-flight gate (API, database, ML,
+  sandbox, GenAI, demo data, optional frontend probe). Prints
+  `READY FOR DEMO` or `NOT READY` (exit 1) — never claims readiness it
+  cannot verify.
+- `py -m scripts.stage10_e2e` — the full judge story against a live API:
+  reset → S1 (prepare → reconstruct → risk → process → VERIFIED → ledger →
+  bn/customer explanation → audit rows) → S2 blocked/provider-not-called →
+  S5 race → S6 idempotency → §29 security sweep, with measured per-step
+  timings. **18/18 checks.**
+- Documents: `reports/stage10_demo_script.md` (timed 3–5 min run sheet),
+  `stage10_judge_qa.md` (17 Q&As), `stage10_pitch.md`,
+  `stage10_demo_check.md` (captured outputs + timings),
+  `stage10_final_readiness.md` (the readiness matrix).
+
+Verification (all green on 2026-10-03): **289 passed, 1 skipped** backend ·
+**75/75** frontend · `tsc` clean · production build · Stage 8 E2E **7/7** ·
+Stage 9 E2E **13/13** · Stage 10 E2E **18/18** · seed **6/6** · demo check
+**READY FOR DEMO**. New tests: `tests/test_demo_router.py` (roles, no-bypass,
+S5 race, reset determinism, audit) and nine frontend suites for the panel,
+console, pipeline, safety gate and verification cards.
