@@ -6,6 +6,9 @@ resets the simulated provider ledger (in-memory) AND deletes the persisted
 sandbox_ledger_entries rows, then records a DEMO_RESET audit row. Wipes
 SIMULATED ledger state only — never transactions, decisions, or audit rows.
 
+GET /api/v1/sandbox/ledger — SANDBOX-ONLY, staff-only (SYSTEM/ADMIN/SUPPORT):
+a read-only snapshot of the SIMULATED provider ledger (in-memory mock).
+
 GET /api/v1/audit — SYSTEM/ADMIN only: newest-first security-audit rows
 with optional action filter. Never returns secrets: actor_id is a key NAME.
 """
@@ -28,7 +31,7 @@ from api.services.audit import (
     current_request_id,
     record_security_event,
 )
-from api.services.payment_provider import get_payment_provider
+from api.services.payment_provider import MockPaymentProvider, get_payment_provider
 
 logger = logging.getLogger("payment_recovery.sandbox_api")
 
@@ -43,6 +46,23 @@ class SandboxResetResponse(BaseModel):
     reset: bool
     simulated: bool
     request_id: str | None
+
+
+class SandboxLedgerEntryOut(BaseModel):
+    transaction_id: str
+    held_amount: float
+    released_amount: float
+    currency: str
+    provider_reference: str | None
+    status: str | None
+
+
+class SandboxLedgerResponse(BaseModel):
+    simulated: bool
+    initial_limit: float
+    available_limit: float
+    currency: str
+    entries: list[SandboxLedgerEntryOut]
 
 
 class AuditRow(BaseModel):
@@ -88,6 +108,33 @@ def reset_sandbox(
                 auth.key_name, auth.role, deleted)
     return SandboxResetResponse(
         reset=True, simulated=True, request_id=current_request_id()
+    )
+
+
+@sandbox_router.get("/ledger", response_model=SandboxLedgerResponse)
+def get_sandbox_ledger(
+    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT")),
+) -> SandboxLedgerResponse:
+    """SANDBOX-ONLY, staff-only read of the SIMULATED ledger: every in-memory
+    entry of the mock provider, plus the simulated limit. Never real funds."""
+    provider = get_payment_provider()
+    snapshot = provider.ledger_snapshot()
+    return SandboxLedgerResponse(
+        simulated=True,
+        initial_limit=MockPaymentProvider.INITIAL_LIMIT,
+        available_limit=provider.available_limit,
+        currency="BDT",
+        entries=[
+            SandboxLedgerEntryOut(
+                transaction_id=e.get("transaction_id", ""),
+                held_amount=float(e.get("held_amount") or 0),
+                released_amount=float(e.get("released_amount") or 0),
+                currency=e.get("currency") or "BDT",
+                provider_reference=e.get("provider_reference"),
+                status=e.get("status"),
+            )
+            for e in snapshot
+        ],
     )
 
 
