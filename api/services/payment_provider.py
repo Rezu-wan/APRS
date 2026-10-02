@@ -8,11 +8,11 @@ step. Nothing in this module may use wording implying real funds; real
 providers are a post-hackathon concern — the PaymentProvider ABC is the
 contract they would have to satisfy.
 
-The ledger is a module-level singleton keyed by transaction_id. It resets on
-process restart — that is documented sandbox behavior, not a bug: a real
-provider's ledger is durable on their side; here, durability ends with the
-process. Persistence of what happened lives in recovery_actions (DB), not in
-the mock.
+The ledger is a module-level singleton keyed by transaction_id. Stage 9 adds
+write-through persistence (sandbox_ledger_entries + restore at startup), so
+the simulated ledger now survives process restarts; the in-memory ledger
+remains the live state. Persistence of what happened also lives in
+recovery_actions (DB), not only in the mock.
 
 Thread-safety: every ledger mutation and read runs under a module-level
 threading.Lock (cheap, correct — the FastAPI app may serve concurrent
@@ -22,10 +22,12 @@ requests and tests may exercise the provider from multiple threads).
 from __future__ import annotations
 
 import dataclasses
+import logging
 import secrets
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from decimal import Decimal
 
 from api.core.config import Settings, get_settings
 
@@ -33,6 +35,64 @@ from api.core.config import Settings, get_settings
 FAILURE_MODES = (None, "TIMEOUT", "ERROR")
 
 OPERATION_RELEASE_LIMIT = "RELEASE_LIMIT"
+
+logger = logging.getLogger("payment_recovery.payment_provider")
+
+
+class SQLAlchemyLedgerStore:
+    """Write-through persistence for the SIMULATED sandbox ledger
+    (sandbox_ledger_entries table). The in-memory ledger remains the LIVE
+    state — this store only survives process restarts so recovery references
+    stay verifiable. Still 100% simulated; DB sessions are created lazily
+    (one per operation) to keep this importable before the app is up."""
+
+    def load_all(self) -> list[dict]:
+        from api.db.database import SessionLocal  # lazy: avoid import cycles
+
+        from api.db.models import SandboxLedgerEntry
+
+        db = SessionLocal()
+        try:
+            rows = db.query(SandboxLedgerEntry).all()
+            return [
+                {
+                    "transaction_id": r.transaction_id,
+                    "held_amount": float(r.held_amount or 0),
+                    "released_amount": float(r.released_amount or 0),
+                    "currency": r.currency,
+                    "provider_reference": r.provider_reference,
+                    "status": r.status,
+                }
+                for r in rows
+            ]
+        finally:
+            db.close()
+
+    def upsert(self, entry: dict) -> None:
+        from api.db.database import SessionLocal  # lazy: avoid import cycles
+
+        from api.db.models import SandboxLedgerEntry
+
+        db = SessionLocal()
+        try:
+            row = db.get(SandboxLedgerEntry, entry["transaction_id"])
+            if row is None:
+                row = SandboxLedgerEntry(
+                    transaction_id=entry["transaction_id"], held_amount=Decimal("0"),
+                    released_amount=Decimal("0"),
+                )
+                db.add(row)
+            row.held_amount = Decimal(str(entry.get("held_amount", 0)))
+            row.released_amount = Decimal(str(entry.get("released_amount", 0)))
+            row.currency = entry.get("currency") or "BDT"
+            row.provider_reference = entry.get("provider_reference")
+            row.status = entry.get("status")
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
 
 
 @dataclass(frozen=True)
@@ -85,9 +145,15 @@ class MockPaymentProvider(PaymentProvider):
 
     INITIAL_LIMIT = 10_000.00
 
-    def __init__(self) -> None:
+    def __init__(self, store=None) -> None:
+        """`store` is optional write-through persistence: an object with
+        load_all() -> list[dict] and upsert(entry: dict) -> None. None (the
+        default, used by unit tests) keeps the pure in-memory sandbox."""
+        self._store = store
         self._lock = threading.Lock()
         self.reset()
+        if store is not None:
+            self.restore_from(store)
 
     # -- test hooks -------------------------------------------------------
 
@@ -100,11 +166,54 @@ class MockPaymentProvider(PaymentProvider):
             self._failure_mode = mode
 
     def reset(self) -> None:
+        """Wipe the in-memory sandbox state ONLY — persisted store rows are
+        untouched (the /sandbox/reset route owns deleting those)."""
         with self._lock:
             self._ledger: dict[str, dict] = {}
             self._processed_keys: dict[str, ProviderResult] = {}
             self._available_limit = self.INITIAL_LIMIT
             self._failure_mode: str | None = None
+
+    # -- write-through persistence ----------------------------------------
+
+    def _persist(self, entry: dict) -> None:
+        """Best-effort write-through: a persistence failure is logged and
+        swallowed — the sandbox operation itself must never break."""
+        if self._store is None:
+            return
+        try:
+            self._store.upsert(entry)
+        except Exception:  # noqa: BLE001 — persistence must not break sandbox
+            logger.warning(
+                "sandbox ledger persistence failed for %s (non-fatal)",
+                entry.get("transaction_id"), exc_info=True,
+            )
+
+    def restore_from(self, store) -> None:
+        """Seed the in-memory ledger from a persistence store (startup
+        restore / restart semantics). Held amounts are restored as-is;
+        available_limit = INITIAL - sum(held). Entries already in memory
+        win — a live hold is never overwritten by a stale persisted row."""
+        try:
+            entries = store.load_all()
+        except Exception:  # noqa: BLE001 — restore failure must not kill startup
+            logger.warning("sandbox ledger restore failed (non-fatal)",
+                           exc_info=True)
+            return
+        with self._lock:
+            for raw in entries:
+                tid = raw.get("transaction_id")
+                if not tid or tid in self._ledger:
+                    continue
+                entry = {
+                    "held_amount": float(raw.get("held_amount") or 0),
+                    "released_amount": float(raw.get("released_amount") or 0),
+                    "provider_reference": raw.get("provider_reference"),
+                    "status": raw.get("status") or "HELD",
+                    "currency": raw.get("currency") or "BDT",
+                }
+                self._ledger[tid] = entry
+                self._available_limit -= entry["held_amount"]
 
     # -- provider operations ----------------------------------------------
 
@@ -122,13 +231,16 @@ class MockPaymentProvider(PaymentProvider):
                     f"available {self._available_limit}"
                 )
             self._available_limit -= amount
-            self._ledger[transaction_id] = {
+            entry = {
+                "transaction_id": transaction_id,
                 "held_amount": amount,
                 "released_amount": 0.0,
                 "provider_reference": None,
                 "status": "HELD",
                 "currency": currency,
             }
+            self._ledger[transaction_id] = entry
+            self._persist(entry)
 
     def release_limit(
         self,
@@ -192,6 +304,7 @@ class MockPaymentProvider(PaymentProvider):
             entry["provider_reference"] = reference
             if entry["released_amount"] >= entry["held_amount"]:
                 entry["status"] = "RELEASED"
+            self._persist({"transaction_id": transaction_id, **entry})
 
             result = ProviderResult(
                 success=True,
@@ -222,9 +335,25 @@ _provider: MockPaymentProvider | None = None
 _provider_lock = threading.Lock()
 
 
+def restore_sandbox_ledger() -> None:
+    """Lifespan startup hook: load persisted sandbox ledger entries into the
+    fresh in-memory ledger so holds/references survive process restarts.
+    Defensive by contract — never raises, never blocks startup."""
+    try:
+        provider = get_payment_provider()
+        if isinstance(provider, MockPaymentProvider) and provider._store is None:
+            provider.restore_from(SQLAlchemyLedgerStore())
+        logger.info("sandbox ledger restore complete")
+    except Exception:  # noqa: BLE001 — startup must not fail on restore
+        logger.warning("sandbox ledger restore skipped", exc_info=True)
+
+
 def get_payment_provider(settings: Settings | None = None) -> PaymentProvider:
     """Factory keyed on settings.payment_provider. Only "mock" exists in
-    Stage 8; unknown names fail fast rather than silently simulating."""
+    Stage 8; unknown names fail fast rather than silently simulating.
+    The singleton is constructed ONCE with a SQLAlchemy write-through store
+    (Stage 9 restart persistence); direct MockPaymentProvider() construction
+    (unit tests) keeps the pure in-memory behavior via store=None."""
     global _provider
     chosen = (settings or get_settings()).payment_provider
     if chosen != "mock":
@@ -234,5 +363,5 @@ def get_payment_provider(settings: Settings | None = None) -> PaymentProvider:
         )
     with _provider_lock:
         if _provider is None:
-            _provider = MockPaymentProvider()
+            _provider = MockPaymentProvider(store=SQLAlchemyLedgerStore())
         return _provider
