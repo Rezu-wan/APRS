@@ -14,7 +14,12 @@ from api.services.ai.fallback import fallback_explanation
 from api.services.ai.mock_provider import FailingMockProvider, MockAIProvider
 from api.services.ai.openai_provider import OpenAIProvider
 from api.services.ai.prompts import build_messages
-from api.services.ai.schemas import Audience, ExplanationContext, Language
+from api.services.ai.schemas import (
+    Audience,
+    ExplanationContext,
+    Language,
+    ReconstructionEvidence,
+)
 
 
 def _context(**overrides) -> ExplanationContext:
@@ -120,6 +125,64 @@ def test_build_messages_support_payload_includes_sensitive_fields():
 
     for required in ("risk_score", "safe_to_release_probability", "timeline"):
         assert required in serialized
+
+
+def test_build_messages_customer_payload_excludes_missing_events_but_keeps_evidence():
+    """Reconstruction evidence is authoritative and customer-appropriate
+    (root cause, stage statuses, evidence_summary) — but missing_events is
+    internal bookkeeping and must never reach a CUSTOMER payload."""
+    context = _context(
+        audience=Audience.CUSTOMER,
+        language=Language.EN,
+        reconstruction=ReconstructionEvidence(
+            root_cause="MERCHANT_CONFIRMATION_TIMEOUT",
+            failure_stage="MERCHANT_CONFIRMATION",
+            last_successful_stage="GATEWAY",
+            customer_debit_status="CONFIRMED",
+            gateway_status="CONFIRMED",
+            merchant_confirmation_status="TIMEOUT",
+            settlement_status="NOT_OBSERVED",
+            missing_events=["MERCHANT_CONFIRMATION_RECEIVED", "SETTLEMENT_REQUESTED"],
+            evidence_summary=[
+                "Customer bank debit confirmed.",
+                "Merchant confirmation timed out.",
+            ],
+        ),
+    )
+    messages = build_messages(context)
+    user_payload = json.dumps(
+        [m for m in messages if m["role"] != "system"], ensure_ascii=False
+    )
+
+    assert "missing_events" not in user_payload
+    assert "MERCHANT_CONFIRMATION_RECEIVED" not in user_payload
+    assert "evidence_summary" in user_payload
+    assert "Merchant confirmation timed out." in user_payload
+    assert "MERCHANT_CONFIRMATION_TIMEOUT" in user_payload
+
+
+def test_build_messages_support_payload_includes_full_reconstruction():
+    """For a SUPPORT audience both evidence_summary and missing_events must be
+    present in the payload."""
+    context = _context(
+        audience=Audience.SUPPORT,
+        language=Language.EN,
+        reconstruction=ReconstructionEvidence(
+            root_cause="GATEWAY_TIMEOUT",
+            customer_debit_status="CONFIRMED",
+            gateway_status="TIMEOUT",
+            merchant_confirmation_status="NOT_OBSERVED",
+            settlement_status="NOT_OBSERVED",
+            missing_events=["GATEWAY_RESPONSE_RECEIVED"],
+            evidence_summary=["Gateway timed out."],
+        ),
+    )
+    messages = build_messages(context)
+    serialized = json.dumps(messages, ensure_ascii=False)
+
+    assert "evidence_summary" in serialized
+    assert "missing_events" in serialized
+    assert "Gateway timed out." in serialized
 
 
 def test_openai_provider_without_api_key_raises_unavailable():

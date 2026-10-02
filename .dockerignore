@@ -9,3 +9,5 @@ scripts/
 reports/
 *.md
 .git
+frontend/node_modules
+frontend/dist

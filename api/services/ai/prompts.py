@@ -22,7 +22,7 @@ from api.services.ai.schemas import Audience, ExplanationContext
 
 logger = logging.getLogger("payment_recovery.ai.prompts")
 
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 SYSTEM_PROMPT = """\
 You are an explanation assistant for a payment recovery system. You do not make financial decisions.
@@ -36,6 +36,9 @@ processing times, account information, financial outcomes, or policy \
 decisions that are not present in the provided data.
 - Use EXACTLY the provided numbers. They are pre-formatted; do not round, \
 convert, or recompute them.
+- If reconstruction evidence is provided, it is DETERMINISTIC system output \
+and authoritative: report it faithfully, do not re-derive, reinterpret, or \
+contradict it. The audience filtering still applies.
 - Output plain text only: no JSON, no markdown, no headers, no bullet lists.
 - For customer audience: at most 4 short sentences, non-technical, no ML \
 jargon (never say "XGBoost", "classifier", "probability", "model", "score").
@@ -45,6 +48,12 @@ English output must be clear and professional.\
 
 # Fields that must NEVER reach a customer-facing prompt.
 _CUSTOMER_EXCLUDED_FIELDS = ("risk_score", "safe_to_release_probability", "timeline")
+
+# Reconstruction fields excluded from CUSTOMER payloads, ON TOP of the general
+# exclusions above. evidence_summary and the stage statuses ARE
+# customer-appropriate; missing_events is internal bookkeeping (a diff of the
+# expected vs observed event trace) that customers neither need nor should see.
+_CUSTOMER_EXCLUDED_RECONSTRUCTION_FIELDS = ("reconstruction.missing_events",)
 
 _TONE_BY_AUDIENCE = {
     Audience.CUSTOMER: (
@@ -74,6 +83,12 @@ def _payload(context: ExplanationContext) -> dict:
         for field in _CUSTOMER_EXCLUDED_FIELDS:
             data.pop(field, None)
             logger.debug("customer audience: excluded field %s from payload", field)
+        recon = data.get("reconstruction")
+        if isinstance(recon, dict):
+            for field in _CUSTOMER_EXCLUDED_RECONSTRUCTION_FIELDS:
+                _, sub = field.split(".", 1)
+                recon.pop(sub, None)
+                logger.debug("customer audience: excluded field %s from payload", field)
     return data
 
 

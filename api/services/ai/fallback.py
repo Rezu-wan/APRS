@@ -40,6 +40,45 @@ _EN_FAILURE_REASONS = {
 }
 _EN_FAILURE_UNKNOWN = "due to a technical issue"
 
+# Stage 6 reconstruction root causes -> deterministic Bangla sentence. Fixed
+# map: reconstruction evidence is authoritative and deterministic, so the
+# fallback rendering of it must be too — no free-text generation.
+_BN_ROOT_CAUSES = {
+    "NONE": "লেনদেনটি সফলভাবে সম্পন্ন হয়েছে।",
+    "INCOMPLETE": "লেনদেনের সম্পূর্ণ তথ্য এখনো পাওয়া যায়নি।",
+    "CUSTOMER_DEBIT_FAILED": "কাস্টমার ডেবিট ব্যর্থ হয়েছে।",
+    "GATEWAY_TIMEOUT": "গেটওয়ে টাইমআউট হয়েছে।",
+    "GATEWAY_ERROR": "গেটওয়ে ত্রুটি হয়েছে।",
+    "MERCHANT_CONFIRMATION_TIMEOUT": "মার্চেন্ট কনফার্মেশনের সময়সীমা শেষ হয়ে গেছে।",
+    "MERCHANT_ERROR": "মার্চেন্ট ত্রুটি হয়েছে।",
+    "SETTLEMENT_FAILED": "সেটেলমেন্ট ব্যর্থ হয়েছে।",
+    "SETTLEMENT_NOT_CONFIRMED": "সেটেলমেন্ট নিশ্চিত হয়নি।",
+}
+
+# Stage 6 reconstruction root causes -> deterministic English sentence.
+_EN_ROOT_CAUSES = {
+    "NONE": "The transaction completed successfully.",
+    "INCOMPLETE": "The payment flow is incomplete; the final outcome is not yet known.",
+    "CUSTOMER_DEBIT_FAILED": "Root cause: customer debit failed.",
+    "GATEWAY_TIMEOUT": "Root cause: gateway timeout.",
+    "GATEWAY_ERROR": "Root cause: gateway error.",
+    "MERCHANT_CONFIRMATION_TIMEOUT": "Root cause: merchant confirmation timeout.",
+    "MERCHANT_ERROR": "Root cause: merchant error.",
+    "SETTLEMENT_FAILED": "Root cause: settlement failed.",
+    "SETTLEMENT_NOT_CONFIRMED": "Root cause: settlement not confirmed.",
+}
+
+
+def _root_cause_sentence(context: ExplanationContext) -> str | None:
+    """Deterministic first sentence for the reconstruction evidence, or None
+    when no reconstruction is attached to the context."""
+    recon = context.reconstruction
+    if recon is None:
+        return None
+    if context.language == Language.BN:
+        return _BN_ROOT_CAUSES.get(recon.root_cause)
+    return _EN_ROOT_CAUSES.get(recon.root_cause)
+
 
 def _bn_failure(context: ExplanationContext) -> str:
     if not context.failure_reason:
@@ -165,6 +204,11 @@ def fallback_explanation(context: ExplanationContext) -> str:
         )
     else:  # SUPPORT and SYSTEM share the factual-summary template
         text = _support_summary(context)
+    # Reconstruction evidence is authoritative and deterministic — when it is
+    # attached, its fixed-map sentence leads the explanation.
+    root_cause_sentence = _root_cause_sentence(context)
+    if root_cause_sentence:
+        text = f"{root_cause_sentence} {text}"
     logger.debug(
         "fallback explanation built: tx=%s lang=%s audience=%s",
         context.transaction_id,

@@ -5,7 +5,8 @@ recovery risk with ML, deciding — via a **deterministic policy** — whether t
 auto-release the customer's limit, and recording every state change in an
 **append-only Digital Twin event log**.
 
-Built in four completed stages; the operator frontend is a later stage.
+Built in five completed stages (dataset, ML engine, API, GenAI explanations,
+React frontend).
 
 > **Honest status / limitations**
 > - **No real payment provider is connected.** `PaymentProvider` is a named
@@ -17,8 +18,9 @@ Built in four completed stages; the operator frontend is a later stage.
 >   The application logs a warning when they are in use and *refuses to start*
 >   in `ENVIRONMENT=production` with them.
 > - **`docker compose` could not be run on this machine** (Docker is not
->   installed here). The compose file is provided as-is and untested locally;
->   the SQLite path has been verified end-to-end.
+>   installed here). The compose file — including the Stage 5 `frontend`
+>   service — is provided as-is and untested locally; the SQLite path and the
+>   frontend npm dev-server path have been verified end-to-end.
 
 ---
 
@@ -37,8 +39,10 @@ Built in four completed stages; the operator frontend is a later stage.
                                               |                only)       |
                                               +------------|--|------------+
                                                            |  |
-                                     Stage 4: GenAI    frontend
-                                     (EXPLAIN only)    (later stage)
+                                     Stage 4: GenAI    Stage 5: React
+                                     (EXPLAIN only)    frontend (frontend/)
+                                                       thin client, no
+                                                       authority of its own
 ```
 
 Flow: the **generator** produces the synthetic dataset; the **ML engine**
@@ -49,7 +53,10 @@ through a state machine (`INITIATED -> PROCESSING -> SUCCESS | FAILED/STALLED
 RECOVERY_REJECTED`), runs ML assessment on failure, applies the recovery
 policy, and atomically persists state + Digital Twin events. **GenAI (Stage 4)
 sits strictly AFTER the decision** — it only ever *explains* decisions, never
-makes them; the frontend is the remaining later stage.
+makes them. The **React frontend (Stage 5)** is a thin client over the API:
+it renders what the backend returns and submits actions for the backend to
+authorize and execute — it holds no state machine, no policy, and no data of
+its own.
 
 Key files:
 
@@ -66,6 +73,7 @@ Key files:
 | `api/services/ml_service.py` | Bridge to the Stage 2 models |
 | `api/services/ai/` | Stage 4 GenAI layer: `base.py` (AIProvider), `openai_provider.py`, `mock_provider.py`, `prompts.py`, `fallback.py`, `schemas.py` |
 | `api/db/models.py`, `api/db/migrations/` | SQLAlchemy models + Alembic (`ai_explanations` table added in Stage 4) |
+| `frontend/` | Stage 5 React SPA (Vite + TS + Tailwind); thin client over the API — see section 15 and `frontend/README.md` |
 
 ## 2. Environment setup
 
@@ -650,6 +658,8 @@ API_KEY_SYSTEM=... API_KEY_ADMIN=... API_KEY_SUPPORT=... API_KEY_CUSTOMER=...
 > built on, so `docker compose up --build` was **not executed here**. The
 > SQLite setup (section 3) is the verified path. Apply migrations inside the
 > container on first run: `docker compose exec api python -m alembic upgrade head`.
+> The Stage 5 `frontend` service (section 15) is included in the same compose
+> file and shares this untested-locally status.
 
 ## 13. Tests
 
@@ -669,3 +679,234 @@ python scripts/generate_dataset.py        # data/transactions.csv (25k rows)
 python -m ml.train                        # models/*.joblib + reports/
 python -m ml.evaluate                     # reports/ metrics and plots
 ```
+
+## 15. React frontend (Stage 5)
+
+`frontend/` is a thin-client single-page app over the API: React 18 + Vite +
+TypeScript + Tailwind, `react-router-dom` for routing, TanStack Query for
+fetching/caching, axios for transport, zod for response validation,
+`lucide-react` for icons. Full details in `frontend/README.md`.
+
+### 15.1 Architecture summary
+
+```
+ Browser -> React SPA (frontend/) --X-API-Key header--> FastAPI backend
+              renders only what the        (authoritative: state machine,
+              backend returns; no fake      deterministic policy, ML scores,
+              data, ever                    Digital Twin log, role checks)
+```
+
+The frontend holds **no authority**: it cannot decide recovery outcomes,
+cannot fabricate statistics, and its role checks are UI visibility only —
+the backend independently enforces authorization on every request (`403`).
+
+### 15.2 Prerequisites
+
+- Node.js 20+ and npm (frontend)
+- Python 3.12 environment set up per section 2 (backend)
+
+### 15.3 Running (two terminals)
+
+```bash
+# Terminal 1 — backend (section 5)
+uvicorn api.main:app --reload
+
+# Terminal 2 — frontend
+cd frontend
+npm install
+cp .env.example .env          # VITE_API_BASE_URL=http://localhost:8000/api/v1
+npm run dev                   # http://localhost:5173
+```
+
+CORS: the backend's `CORS_ORIGINS` must include `http://localhost:5173` (the
+Vite dev origin) or the browser will block every request — see section 4.
+
+### 15.4 Environment variables (frontend)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VITE_API_BASE_URL` | `http://localhost:8000/api/v1` | Backend base URL the browser calls. |
+
+> **`VITE_` variables are public** — Vite inlines them into the served JS
+> bundle. Never put a secret in one. Real API keys stay in the backend
+> `.env` and never reach the frontend.
+
+### 15.5 Authentication
+
+The frontend uses the backend's `X-API-Key` auth (section 7). The user enters
+a key on `/login`; it is validated via `GET /api/v1/auth/me` and stored in
+`sessionStorage` (cleared when the tab closes). Every axios request attaches
+the header afterwards. For local development the documented `dev-*` keys
+(section 7) work; the same standing warning applies — they are insecure
+placeholders and rejected in `ENVIRONMENT=production`.
+
+| Role | Sees in the UI |
+|---|---|
+| `SYSTEM` / `ADMIN` | dashboard stats, transaction/timeline views, release-limit action, explanation generation |
+| `SUPPORT` | dashboard stats, transaction/timeline views, explanation generation (no release-limit button) |
+| `CUSTOMER` | login probe only — transaction reads are backend-restricted until identity is user-bound |
+
+Frontend role checks are **UI visibility only; the backend enforces
+authorization**.
+
+### 15.6 API integration
+
+| Endpoint | Method | Purpose in the UI |
+|---|---|---|
+| `/health` | GET | backend availability check (no auth) |
+| `/api/v1/auth/me` | GET | login role probe |
+| `/api/v1/stats/summary` | GET | dashboard aggregates (honest, computed from stored data) |
+| `/api/v1/transactions/{id}` | GET | transaction detail |
+| `/api/v1/transactions/{id}/timeline` | GET | Digital Twin timeline view |
+| `/api/v1/recovery/release-limit` | POST | SYSTEM/ADMIN action |
+| `/api/v1/explanations/transaction` | POST | SYSTEM/ADMIN/SUPPORT; body `{transaction_id, language: "bn"\|"en", audience: "customer"\|"support"\|"system"}` |
+
+### 15.7 Available routes
+
+| Path | Page |
+|---|---|
+| `/login` | API key entry |
+| `/dashboard` | Aggregate stats |
+| `/transactions` | Transaction list / lookup |
+| `/transactions/:transactionId` | Detail + timeline + role-gated actions |
+
+### 15.8 Production build
+
+```bash
+cd frontend
+npm run build     # typecheck + bundle -> frontend/dist/
+npm run preview   # serve the build locally
+```
+
+### 15.9 Docker
+
+A multi-stage `frontend/Dockerfile` builds the SPA (`node:20-alpine`,
+`npm ci` + `npm run build`, with `VITE_API_BASE_URL` as a **build arg**) and
+serves `dist/` via `nginx:alpine` (gzip, SPA fallback via
+`try_files ... /index.html`, no cache for `index.html`, long cache for hashed
+`assets/`). The root compose file adds a `frontend` service on port `5173:80`
+with `depends_on: api`. No secrets are baked into the image.
+
+> **Honesty note:** Docker is not installed on this machine, so the frontend
+> image build was **not executed here** (see section 12). The npm
+> dev-server path in 15.3 is the verified way to run the frontend.
+
+### 15.10 No fabricated statistics
+
+The frontend renders **only** what the backend returns — there are no
+hardcoded transactions, scores, timelines, or summary numbers anywhere in the
+client, and loading/empty/error states are shown explicitly. The backend
+remains the single authority for every fact the UI displays.
+
+---
+
+## 16. Payment event reconstruction engine (Stage 6)
+
+Stage 6 adds an **evidence layer** beneath the recovery system: it reconstructs
+*what actually happened* inside a payment flow and identifies — deterministically,
+from stored evidence — where the flow stalled or failed.
+
+> **Scope boundary (important):** Stage 6 answers **"What happened?"** only.
+> It never releases limits, never changes transaction state, and never makes
+> recovery decisions. Those remain the Stage 3 policy's exclusive authority.
+> Anomaly/fraud classification ("Is this suspicious?") is a later stage.
+
+### 16.1 Architecture
+
+```
+Payment Events (payment_events table)
+      ↓
+Event Ordering (by event_timestamp — NOT insertion order)
+      ↓
+Lifecycle Reconstruction (deterministic, pure function)
+      ↓
+Evidence Extraction (per-stage statuses + missing events)
+      ↓
+Root Cause Identification (first-match evidence rules)
+      ↓
+Digital Twin (ROOT_CAUSE_IDENTIFIED observation, append-only)
+      ↓
+GenAI Explanation (Stage 4 consumes evidence as authoritative context)
+```
+
+### 16.2 Payment event model
+
+Fine-grained payment-domain events are stored in the `payment_events` table
+(migration `56a442a6e5b1`), separate from the transaction-state Digital Twin:
+
+| Field | Purpose |
+|---|---|
+| `provider_event_id` | UNIQUE — idempotency anchor; real payment systems redeliver events, replays are safe |
+| `event_type` | 14-type vocabulary (`api/core/payment_lifecycle.py`): customer debit / gateway / merchant confirmation / settlement, each with confirmed/failed/timeout/error/not-confirmed outcomes |
+| `source` | BANK \| GATEWAY \| MERCHANT \| SETTLEMENT \| SYSTEM |
+| `event_timestamp` | domain time — the **authoritative ordering key** (insertion order is never trusted) |
+| `status`, `latency_ms`, `reference_id`, `metadata` | evidence details |
+
+Stored events are **observed facts only**. "Not observed" is never stored —
+it is *derived* for absent evidence at reconstruction time, so the system
+never pretends an event happened.
+
+### 16.3 Reconstruction engine
+
+`api/services/event_reconstruction.py` — a pure, deterministic function.
+No LLM, no randomness, no guessing:
+
+- **Per-stage status** from observed terminal events; progress-only stages are
+  `OBSERVED`; absent stages are `NOT_OBSERVED` (explicit uncertainty).
+- **Root cause** by first-match priority: debit failure → gateway timeout/error →
+  merchant timeout/error → settlement failure/not-confirmed → full success (`NONE`)
+  → otherwise `INCOMPLETE` (evidence exists but no terminal outcome — reported as
+  unknown, never as a guessed failure).
+- **Confidence** = deterministic evidence coverage over the 7-event happy path
+  (e.g. success 1.0, merchant timeout 0.71, gateway timeout 0.43, debit failure 0.14).
+- **Evidence summary**: human-readable English lines per stage + a conclusion.
+
+### 16.4 APIs
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/transactions/{id}/payment-events` | Batch ingestion (SYSTEM/ADMIN). Idempotent on `provider_event_id`; source/status are derived from the vocabulary, not client claims |
+| `GET /api/v1/transactions/{id}/reconstruction` | Run the engine (SYSTEM/ADMIN/SUPPORT). Records a `ROOT_CAUSE_IDENTIFIED` Digital Twin observation on first reconstruction per root cause (idempotent — repeats return the same result without appending) |
+
+### 16.5 Payment event simulator
+
+`scripts/payment_event_simulator.py` generates realistic event sequences for
+eight scenarios (`success`, `gateway_timeout`, `gateway_error`, `merchant_timeout`,
+`merchant_error`, `settlement_failure`, `settlement_not_confirmed`, `debit_failure`):
+
+```bash
+# print a deterministic merchant-timeout sequence
+py -m scripts.payment_event_simulator --transaction-id TXN-SIM-1 --scenario merchant_timeout --seed 42
+
+# create the transaction, then ingest its events (idempotent — re-run safely)
+curl -s -X POST http://127.0.0.1:8000/api/v1/transaction/event -H "Content-Type: application/json" \
+  -H "X-API-Key: dev-system-key" -d '{"transaction_id":"TXN-SIM-1","user_id":"U-1","merchant_id":"M-1","amount":1200,"status":"FAILED","failure_reason":"Timeout"}'
+py -m scripts.payment_event_simulator --transaction-id TXN-SIM-1 --scenario merchant_timeout --seed 42 --ingest
+```
+
+### 16.6 Digital Twin integration
+
+Reconstruction appends an **observation** (not a state transition):
+`ROOT_CAUSE_IDENTIFIED` with structured metadata (root_cause, failure_stage,
+last_successful_stage, all four stage statuses, missing_events,
+reconstruction_version). Append-only, like every twin event; duplicates for an
+unchanged root cause are suppressed.
+
+### 16.7 GenAI integration
+
+`ExplanationContext` now optionally carries `ReconstructionEvidence` (root cause,
+stage statuses, evidence lines). `PROMPT_VERSION` is now **v2**; the fingerprint
+includes the reconstruction, so cached explanations regenerate when the evidence
+changes. Customer payloads exclude `missing_events` (internal bookkeeping) but
+include the evidence story; support payloads include everything. Deterministic
+fallback templates speak the root cause in Bangla and English.
+
+### 16.8 Limitations (honest)
+
+- **Synthetic/sandbox payment environment** — events come from the local
+  simulator; there is **no real bank/gateway/settlement integration**. Do not
+  interpret stage statuses as real banking facts.
+- `INCOMPLETE` reconstructions report unknown outcomes rather than guessing.
+- Confidence is evidence coverage, not a probability of correctness.
+- Event redelivery beyond the first occurrence is tolerated (deduplicated) but
+  duplicates remain visible in `ordered_events` for audit purposes.

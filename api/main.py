@@ -26,7 +26,15 @@ from api.core.config import DEV_KEY_WARNING, get_settings
 from api.core.exceptions import AppError
 from api.core.security import ROLES
 from api.db.database import engine
-from api.routes import explanations, recovery, transactions
+from api.routes import (
+    auth,
+    explanations,
+    payment_events,
+    recovery,
+    reconstruction,
+    stats,
+    transactions,
+)
 from api.services.ml_service import get_ml_service
 
 logging.basicConfig(
@@ -59,9 +67,11 @@ app = FastAPI(
         "explanations of already-made decisions (GenAI explains; it never "
         "decides).\n\n"
         "Authenticate with the `X-API-Key` header (roles: SYSTEM, ADMIN, "
-        "SUPPORT, CUSTOMER — see .env.example)."
+        "SUPPORT, CUSTOMER — see .env.example).\n\n"
+        "Stage 5 adds frontend-support endpoints: identity bootstrap "
+        "(/auth/me) and honest dashboard aggregates (/stats/summary)."
     ),
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -69,6 +79,10 @@ app.include_router(transactions.router)
 app.include_router(transactions.ingest_router)
 app.include_router(recovery.router)
 app.include_router(explanations.router)
+app.include_router(auth.router)
+app.include_router(stats.router)
+app.include_router(payment_events.router)
+app.include_router(reconstruction.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware

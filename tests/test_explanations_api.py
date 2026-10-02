@@ -6,9 +6,19 @@ explains — it never mutates state)."""
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy.orm import Session
 
+from api.core.payment_lifecycle import (
+    OUTCOME_CONFIRMED,
+    OUTCOME_PROGRESS,
+    OUTCOME_TIMEOUT,
+    PaymentSource,
+)
+from api.db.database import engine
+from api.db.models import PaymentEvent
 from api.main import app
 from api.services.ai import get_ai_provider
 from api.services.ai.mock_provider import FailingMockProvider
@@ -66,7 +76,7 @@ def test_customer_bangla_explanation_from_mock_provider(client):
     assert body["explanation"].strip() != ""
     assert _has_bengali(body["explanation"])
     assert body["provider"] == "mock"
-    assert body["prompt_version"] == "v1"
+    assert body["prompt_version"] == "v2"
     assert body["is_fallback"] is False
     assert body["cached"] is False
 
@@ -148,6 +158,77 @@ def test_client_cannot_inject_decision_fields(client):
     assert body["explanation"].strip() != ""
     assert "LIMIT_RELEASED" in body["explanation"]
     assert "RECOVERY_REJECTED" not in body["explanation"]
+
+
+def _insert_payment_events(tid: str, event_types: list[tuple[str, str, str]]) -> None:
+    """Insert PaymentEvent rows directly via the same engine conftest pins.
+    Each entry is (event_type, source, status) with monotonically increasing
+    domain timestamps so ordering is deterministic."""
+    base = datetime.now(timezone.utc) - timedelta(hours=1)
+    with Session(bind=engine) as db:
+        for i, (event_type, source, status) in enumerate(event_types):
+            db.add(
+                PaymentEvent(
+                    transaction_id=tid,
+                    provider_event_id=f"PE-{tid}-{i}",
+                    event_type=event_type,
+                    source=source,
+                    status=status,
+                    event_timestamp=base + timedelta(minutes=i),
+                )
+            )
+        db.commit()
+
+
+def test_explanation_includes_deterministic_root_cause(client):
+    """A transaction WITH payment events gets the Stage 6 reconstruction
+    projected into its explanation; the fallback leads with the fixed
+    deterministic root-cause sentence (GenAI reports evidence, never
+    re-derives it)."""
+    tid = _unique_id("TXN-RECON")
+    assert _ingest_failed(client, tid).status_code == 200
+    _insert_payment_events(
+        tid,
+        [
+            ("CUSTOMER_DEBIT_CONFIRMED", PaymentSource.BANK, OUTCOME_CONFIRMED),
+            ("GATEWAY_REQUEST_SENT", PaymentSource.GATEWAY, OUTCOME_PROGRESS),
+            ("GATEWAY_RESPONSE_RECEIVED", PaymentSource.GATEWAY, OUTCOME_CONFIRMED),
+            (
+                "MERCHANT_CONFIRMATION_TIMEOUT",
+                PaymentSource.MERCHANT,
+                OUTCOME_TIMEOUT,
+            ),
+        ],
+    )
+
+    app.dependency_overrides[get_ai_provider] = lambda: FailingMockProvider()
+    try:
+        resp = _explain(client, tid, language="en", audience="support",
+                        headers=SUPPORT_KEY)
+    finally:
+        app.dependency_overrides.pop(get_ai_provider, None)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "Root cause: merchant confirmation timeout." in body["explanation"]
+    # forced FailingMockProvider -> deterministic fallback output
+    assert body["is_fallback"] is True
+
+
+def test_explanation_without_payment_events_unchanged(client):
+    """Regression guard: a transaction with NO payment-domain events explains
+    exactly as before — no reconstruction sentence, no crash."""
+    tid = _unique_id("TXN-NORECON")
+    _released_tx(client, tid)
+
+    resp = _explain(client, tid, language="en", audience="support",
+                    headers=SUPPORT_KEY)
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["explanation"].strip() != ""
+    assert "Root cause:" not in body["explanation"]
+    assert "The payment flow is incomplete" not in body["explanation"]
 
 
 def test_explanations_never_mutate_transaction_state(client):

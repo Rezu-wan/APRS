@@ -18,6 +18,18 @@ services:
     ports:
       - "8000:8000"
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Public value (inlined into the JS bundle by Vite): the URL the
+        # BROWSER uses to reach the api. Defaults to the host-mapped port.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
   postgres:
     image: postgres:16-alpine
     environment:
