@@ -212,6 +212,11 @@ class PaymentEvent(Base):
     reference_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     event_metadata: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    # Stage 11A event-correlation columns (all nullable — pre-existing rows
+    # are backfilled with correlation_id = transaction_id by migration)
+    correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    causation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    schema_version: Mapped[str | None] = mapped_column(String(8), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
