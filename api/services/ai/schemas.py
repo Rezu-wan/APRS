@@ -54,6 +54,7 @@ class ExplanationContext(BaseModel):
     timeline: list[str] | None = None  # e.g. ["TRANSACTION_CREATED: - -> INITIATED", ...]
     reconstruction: ReconstructionEvidence | None = None
     risk_assessment: RiskAssessmentEvidence | None = None
+    recovery: RecoveryEvidence | None = None
     language: Language
     audience: Audience
 
@@ -82,6 +83,18 @@ class ReconstructionEvidence(BaseModel):
     settlement_status: str
     missing_events: list[str] = []
     evidence_summary: list[str] = []
+
+
+class RecoveryEvidence(BaseModel):
+    """Projection of the Stage 8 recovery outcome into the explanation context."""
+
+    action: str
+    status: str
+    decision_reason: str | None = None
+    blocked_reason: str | None = None
+    failure_reason: str | None = None
+    provider_reference: str | None = None
+    verified: bool = False
 
 
 class ExplanationOutput(BaseModel):

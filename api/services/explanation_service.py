@@ -35,6 +35,7 @@ from api.core.config import Settings
 from api.core.exceptions import NotFoundError
 from api.db.models import (
     AIExplanation,
+    RecoveryActionRecord,
     RecoveryDecision,
     RiskAssessmentRecord,
     Transaction,
@@ -49,6 +50,7 @@ from api.services.ai.schemas import (
     ExplanationResponse,
     Language,
     ReconstructionEvidence,
+    RecoveryEvidence,
     RiskAssessmentEvidence,
 )
 from api.services.digital_twin import get_timeline
@@ -115,6 +117,33 @@ def _build_risk(db: Session, transaction_id: str) -> RiskAssessmentEvidence | No
     )
 
 
+def _build_recovery(db: Session, transaction_id: str) -> RecoveryEvidence | None:
+    """Project the latest Stage 8 autonomous recovery action into the
+    explanation context.
+
+    ARCHITECTURAL RULE (same as the whole module): this is a pure READ. The
+    explanation path NEVER runs or re-decides recovery — it only surfaces the
+    latest stored RecoveryActionRecord produced by the deterministic
+    policy+safety+executor pipeline. GenAI explains the outcome; it never
+    decides it. No action stored yet -> None (explains exactly as before)."""
+    record = db.scalars(
+        select(RecoveryActionRecord)
+        .where(RecoveryActionRecord.transaction_id == transaction_id)
+        .order_by(RecoveryActionRecord.created_at.desc(), RecoveryActionRecord.id.desc())
+    ).first()
+    if record is None:
+        return None
+    return RecoveryEvidence(
+        action=record.action,
+        status=record.status,
+        decision_reason=record.decision_reason,
+        blocked_reason=record.blocked_reason,
+        failure_reason=record.failure_reason,
+        provider_reference=record.provider_reference,
+        verified=record.status == "VERIFIED",
+    )
+
+
 def build_fingerprint(
     tx: Transaction,
     decision: RecoveryDecision | None,
@@ -122,12 +151,13 @@ def build_fingerprint(
     audience: str,
     reconstruction: ReconstructionEvidence | None = None,
     risk_assessment: RiskAssessmentEvidence | None = None,
+    recovery: RecoveryEvidence | None = None,
 ) -> str:
     """sha256 hex of a stable JSON of every field the explanation depends on.
 
     Any change to the underlying decision, ML assessment, transaction state,
-    reconstruction evidence, prompt version, or the requested language/audience
-    invalidates the cache and forces a fresh generation."""
+    reconstruction evidence, recovery action, prompt version, or the requested
+    language/audience invalidates the cache and forces a fresh generation."""
     fingerprint_source = {
         "current_state": tx.current_state,
         "failure_reason": tx.failure_reason,
@@ -164,6 +194,12 @@ def build_fingerprint(
                 risk_assessment.recovery_candidate if risk_assessment else None
             ),
         },
+        # Any change in the latest Stage 8 recovery action (including its
+        # arrival when previously absent) invalidates the cached explanation.
+        "recovery": {
+            "action": recovery.action if recovery else None,
+            "status": recovery.status if recovery else None,
+        },
         "language": language,
         "audience": audience,
         "prompt_version": PROMPT_VERSION,
@@ -180,6 +216,7 @@ def build_context(
     audience: str,
     reconstruction: ReconstructionEvidence | None = None,
     risk_assessment: RiskAssessmentEvidence | None = None,
+    recovery: RecoveryEvidence | None = None,
 ) -> ExplanationContext:
     """Map ORM rows onto the controlled provider-facing schema. All numbers
     are pre-formatted here so the model can never recalculate them."""
@@ -204,6 +241,7 @@ def build_context(
         ],
         reconstruction=reconstruction,
         risk_assessment=risk_assessment,
+        recovery=recovery,
         language=Language(language),
         audience=Audience(audience),
     )
@@ -235,8 +273,9 @@ def get_or_create_explanation(
     timeline_events = get_timeline(db, transaction_id)
     reconstruction = _build_reconstruction(db, tx)
     risk_assessment = _build_risk(db, transaction_id)
+    recovery = _build_recovery(db, transaction_id)
     fingerprint = build_fingerprint(
-        tx, decision, language, audience, reconstruction, risk_assessment
+        tx, decision, language, audience, reconstruction, risk_assessment, recovery
     )
 
     cached_row = db.scalars(
@@ -269,7 +308,7 @@ def get_or_create_explanation(
 
     context = build_context(
         tx, decision, timeline_events, language, audience, reconstruction,
-        risk_assessment,
+        risk_assessment, recovery,
     )
 
     started = time.perf_counter()

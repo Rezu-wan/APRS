@@ -22,7 +22,7 @@ from api.services.ai.schemas import Audience, ExplanationContext
 
 logger = logging.getLogger("payment_recovery.ai.prompts")
 
-PROMPT_VERSION = "v3"
+PROMPT_VERSION = "v4"
 
 SYSTEM_PROMPT = """\
 You are an explanation assistant for a payment recovery system. You do not make financial decisions.
@@ -44,6 +44,10 @@ rules engine: report its classification and recovery eligibility \
 faithfully; do not re-derive, soften, or escalate it, and do not use the \
 words "fraud" or "fraudulent" about any person — describe classifications \
 neutrally (e.g. "flagged for manual review").
+- If recovery information is provided it describes an action ALREADY decided \
+and executed by a deterministic safety-gated engine in a SIMULATED SANDBOX: \
+report it faithfully, never claim or promise real money movement, and never \
+present recovery as a decision the assistant made.
 - Output plain text only: no JSON, no markdown, no headers, no bullet lists.
 - For customer audience: at most 4 short sentences, non-technical, no ML \
 jargon (never say "XGBoost", "classifier", "probability", "model", "score").
@@ -59,6 +63,10 @@ _CUSTOMER_EXCLUDED_FIELDS = (
     "safe_to_release_probability",
     "timeline",
     "risk_assessment",
+    # Stage 8: the ENTIRE recovery object is stripped for customers — they get
+    # resolved/under-review wording through fallback/template phrasing only,
+    # never internal statuses, action codes, reasons, or provider references.
+    "recovery",
 )
 
 # Reconstruction fields excluded from CUSTOMER payloads, ON TOP of the general

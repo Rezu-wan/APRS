@@ -19,6 +19,7 @@ from api.services.ai.schemas import (
     ExplanationContext,
     Language,
     ReconstructionEvidence,
+    RecoveryEvidence,
     RiskAssessmentEvidence,
 )
 
@@ -323,6 +324,110 @@ def test_fallback_without_risk_assessment_outputs_unchanged():
             assert "পেমেন্ট সিস্টেমের প্রমাণের ভিত্তিতে" not in text
             assert "পুনরুদ্ধারের যোগ্যতা" not in text
             assert text.strip() != ""
+
+
+def _recovery(**overrides) -> RecoveryEvidence:
+    payload = {
+        "action": "RELEASE_LIMIT",
+        "status": "VERIFIED",
+        "decision_reason": "genuine failure",
+        "blocked_reason": None,
+        "failure_reason": None,
+        "provider_reference": "REL-TEST1234",
+        "verified": True,
+    }
+    payload.update(overrides)
+    return RecoveryEvidence(**payload)
+
+
+def test_fallback_recovery_verified_customer_reports_release_and_reference():
+    """Stage 8: with status VERIFIED the customer fallback claims the release
+    and includes the provider reference — en and reviewed bn copy."""
+    en_context = _context(language=Language.EN, recovery=_recovery())
+    en_text = fallback_explanation(en_context)
+    assert "released" in en_text
+    assert "REL-TEST1234" in en_text
+
+    bn_context = _context(recovery=_recovery())
+    bn_text = fallback_explanation(bn_context)
+    assert _has_bengali(bn_text)
+    assert "স্বয়ংক্রিয়ভাবে ছেড়ে দেওয়া হয়েছে" in bn_text
+    assert "REL-TEST1234" in bn_text
+
+
+def test_fallback_recovery_non_verified_customer_never_claims_release():
+    """Spec §30: pending/blocked/non-verified recovery must yield neutral
+    under-review wording — never a release claim, no internal statuses."""
+    for language in (Language.BN, Language.EN):
+        for status in ("PENDING", "EXECUTING", "BLOCKED", "FAILED",
+                       "VERIFICATION_PENDING", "COMPLETED"):
+            context = _context(
+                language=language,
+                recovery=_recovery(status=status, verified=False),
+                recovery_decision="LIMIT_RELEASED",
+            )
+            text = fallback_explanation(context)
+
+            assert "released" not in text.lower(), (
+                f"{language.value}/{status} claimed release"
+            )
+            assert "ছেড়ে দেওয়া" not in text
+            assert status not in text
+
+
+def test_fallback_recovery_support_reports_status_and_sandbox_marker():
+    """Support sees the full recovery outcome: humanized action, status and
+    the simulated sandbox marker."""
+    context = _context(
+        language=Language.EN,
+        audience=Audience.SUPPORT,
+        recovery=_recovery(
+            status="BLOCKED", verified=False, blocked_reason="duplicate debit"
+        ),
+    )
+    text = fallback_explanation(context)
+
+    assert "Autonomous recovery: release limit — status blocked" in text
+    assert "(simulated sandbox provider)" in text
+    assert "Blocked reason: duplicate debit" in text
+
+
+def test_build_messages_customer_payload_excludes_recovery_entirely():
+    """Stage 8: the ENTIRE recovery object is stripped from CUSTOMER payloads
+    — no action codes, statuses, reasons, or provider references."""
+    context = _context(
+        audience=Audience.CUSTOMER,
+        language=Language.EN,
+        recovery_decision=None,
+        recovery_reason=None,
+        recovery=_recovery(),
+    )
+    messages = build_messages(context)
+    user_payload = json.dumps(
+        [m for m in messages if m["role"] != "system"], ensure_ascii=False
+    )
+
+    assert '"recovery"' not in user_payload
+    assert "provider_reference" not in user_payload
+    assert "REL-TEST1234" not in user_payload
+    assert "VERIFIED" not in user_payload
+    assert "RELEASE_LIMIT" not in user_payload
+    assert "genuine failure" not in user_payload
+
+
+def test_build_messages_support_payload_includes_recovery():
+    """For a SUPPORT audience the full recovery outcome stays in the payload."""
+    context = _context(
+        audience=Audience.SUPPORT,
+        language=Language.EN,
+        recovery=_recovery(),
+    )
+    messages = build_messages(context)
+    serialized = json.dumps(messages, ensure_ascii=False)
+
+    assert "recovery" in serialized
+    assert "REL-TEST1234" in serialized
+    assert "RELEASE_LIMIT" in serialized
 
 
 def test_openai_provider_without_api_key_raises_unavailable():
