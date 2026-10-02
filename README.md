@@ -81,6 +81,12 @@ Key files:
 | `api/services/recovery_verifier.py` | Stage 8 post-execution verification (never `VERIFIED` without passing) |
 | `api/routes/autonomous_recovery.py` | Stage 8 `recovery/process` / `recovery/evaluate` / `recovery` endpoints |
 | `scripts/stage8_e2e.py` | Stage 8 live-API E2E verification (section 18) |
+| `api/middleware.py` | Stage 9 security middleware: request IDs, security headers, rate limiting |
+| `api/core/request_context.py` | Stage 9 request-context propagation (`X-Request-ID` end to end) |
+| `api/services/audit.py` | Stage 9 `security_audit` trail (key names, never secrets; best-effort writes) |
+| `api/routes/sandbox.py` | Stage 9 sandbox reset endpoint (SYSTEM/ADMIN only) |
+| `scripts/seed_demo.py` | Stage 9 deterministic demo seeder (DEMO-S1..S6, idempotent re-runs) |
+| `scripts/stage9_e2e.py` | Stage 9 live-API E2E verification: security flow T1-T13 incl. secret-leakage sweep |
 
 ## 2. Environment setup
 
@@ -1298,3 +1304,207 @@ consistent with the no-human-release-click design above.
 | `api/services/autonomous_recovery.py` | Orchestration: assessment → policy → gate → execute, one commit |
 | `api/routes/autonomous_recovery.py` | `process` / `evaluate` / `GET recovery` endpoints |
 | `scripts/stage8_e2e.py` | Live-API E2E verification (18.10) |
+
+## 19. Security & reliability hardening (Stage 9)
+
+Stage 9 hardens the perimeter of the Stage 1–8 system without touching the
+recovery policy, the state machine, or any ML decision path. As everywhere
+else in this document, the honest caveats stand: **everything is sandbox /
+simulation only — no real payment provider is connected**; **all ML models
+are trained on 100% synthetic data** (`data/transactions.csv`, Stage 1) and
+**have not been validated against real banking or fraud datasets**. Docker
+also remains unverifiable on the machine this was written on (see the
+standing limitation in the header note).
+
+The full threat model — attack vectors, implemented defenses, and the test
+that verifies each — lives in `reports/stage9_security.md`.
+
+### 19.1 Authorization & ownership
+
+Roles are unchanged (SYSTEM > ADMIN > SUPPORT > CUSTOMER), but CUSTOMER
+access is now scoped to its own data:
+
+| Resource | SYSTEM | ADMIN | SUPPORT | CUSTOMER |
+|---|---|---|---|---|
+| Transaction detail / timeline / reconstruction / explanations | all | all | all | **own only** (`user_id` match) |
+| Risk assessment, recovery process/evaluate, stats, audit, sandbox reset | yes | yes | (see Stage 3–8 rules) | **excluded** |
+
+- Config gains `customer_api_keys`, mapping key **names** to customer IDs,
+  e.g. `"dev-customer-alice:alice,dev-customer-bob:bob"`; the legacy
+  `dev-customer-key` maps to `"dev-customer"` for backwards compatibility.
+- `AuthContext` now carries `customer_id`. Customer reads of transaction,
+  timeline, reconstruction and explanations must match `user_id`; any other
+  customer's resource returns **403 with a non-enumerating body** (same
+  shape as 404, so a caller cannot probe which transaction IDs exist).
+- The standing rule holds: **frontend role checks are UI-only.** The React
+  app hides buttons, but every authorization decision is made server-side;
+  the frontend has no authority of its own.
+
+### 19.2 Authentication
+
+- API keys are supplied via environment variables (`API_KEY_SYSTEM`,
+  `API_KEY_ADMIN`, `API_KEY_SUPPORT`, plus the `customer_api_keys` map).
+  Comparison is constant-time to avoid timing oracles.
+- **No secrets in logs or audit rows:** the audit trail stores the key
+  *name* (e.g. `dev-customer-alice`), never the key itself. Error bodies
+  and logs never echo credentials. Plaintext keys in env is a documented
+  residual limitation (see `reports/stage9_security.md`).
+- The existing guard remains: dev keys are refused at startup when
+  `ENVIRONMENT=production`.
+
+### 19.3 Request correlation + security headers
+
+Every request gets an `X-Request-ID`:
+
+- A client-supplied ID is accepted only if it matches
+  `^[A-Za-z0-9_-]{1,64}$`; otherwise one is generated.
+- The ID is echoed on the response and included in **every** error body and
+  log line, so a support engineer can trace one failing request end to end.
+
+Middleware also sets security headers on every response:
+`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+`Referrer-Policy: strict-origin-when-cross-origin`,
+`Permissions-Policy: camera=(), microphone=(), geolocation=()`. The
+frontend nginx config mirrors these plus a CSP (see `frontend/nginx.conf`).
+
+Key files: `api/middleware.py`, `api/core/request_context.py`.
+
+### 19.4 Rate limiting
+
+In-process, per key-name buckets (429 `RATE_LIMITED` with a `Retry-After`
+header):
+
+| Bucket | Limit |
+|---|---|
+| `explanations` | 30 / minute |
+| `recovery` (process/evaluate) | 20 / minute |
+| `risk-assessment` | 30 / minute |
+| `payment-events` | 60 / minute |
+| auth failures | 60 / minute |
+| everything else (default) | 120 / minute |
+
+**Documented limitations:** the limiter is per-process (not shared across
+workers/replicas), resets on restart, and is not distributed — a real
+deployment would need a shared store (e.g. Redis). It is **disabled
+automatically when `ENVIRONMENT=test`** so the test suite is never
+throttled.
+
+### 19.5 Event ingestion hardening
+
+- **Conflict detection:** ingesting a `provider_event_id` that already
+  exists with a **materially different payload** returns
+  `409 EVENT_CONFLICT` and writes an audit row. Material difference is
+  decided by comparing payload **digests** (the digest function is
+  documented in the ingestion code); only digests — never full payloads —
+  are stored in audit metadata.
+- **Payload limits:** provider event IDs must match a strict pattern,
+  `metadata` is capped at 4096 characters, latency must be in
+  `0..3600000` ms, and timestamps may be at most 24 h in the future
+  (clock-skew tolerance). Violations are rejected with
+  `PAYMENT_EVENT_REJECTED` audit rows.
+
+### 19.6 Audit trail
+
+Stage 9 adds a **`security_audit`** table, which is distinct from the
+Digital Twin: the twin records *what happened to transactions* (domain
+events, append-only); `security_audit` records *who did what to the
+system* (security events, append-only, best-effort — a failed audit write
+never breaks the request it is auditing).
+
+- Columns: `audit_id`, `actor_type` / `actor_id` (the key **name**, never
+  the secret), `action`, `resource`, `request_id`, `result`
+  (`ALLOWED` / `DENIED`), `metadata`.
+- Action vocabulary: `AUTH_FAILURE`, `RATE_LIMITED`,
+  `PAYMENT_EVENT_CONFLICT`, `PAYMENT_EVENT_REJECTED`, `FORBIDDEN`,
+  `DEMO_RESET`, `RECOVERY_PROCESS`.
+- `GET /api/v1/audit` is available to SYSTEM/ADMIN only.
+
+Key file: `api/services/audit.py`.
+
+### 19.7 Sandbox ledger persistence + reset
+
+- **Persistence:** the Stage 8 `MockPaymentProvider` ledger is now
+  write-through to a `sandbox_ledger_entries` table and restored at startup
+  (lifespan hook), so a restart no longer orphans recovery references.
+  This is still **100% SIMULATED** — it persists the mock provider's
+  fictional ledger, nothing more.
+- **Reset:** `POST /api/v1/sandbox/reset` (SYSTEM/ADMIN) wipes the
+  simulated ledger only and audits `DEMO_RESET`.
+- **Seeding:** `scripts/seed_demo.py` creates a deterministic demo
+  (transactions `DEMO-S1`..`DEMO-S6`) and is idempotent on re-runs.
+
+Key files: `api/routes/sandbox.py`, `scripts/seed_demo.py`.
+
+### 19.8 Failure modes
+
+Every dependency can fail; the rules for each are fixed and tested:
+
+| Failure | Behavior |
+|---|---|
+| ML inference fails (missing/corrupt model, exception) | **Rules-only assessment** — never interpreted as safe |
+| GenAI provider fails / times out | Deterministic fallback explanation; decisions unaffected |
+| Payment provider fails mid-execution | Result `FAILED` + bounded retries; never `VERIFIED` without passing verification |
+| Recovery path | Unaffected by ML/GenAI failures — assessment and explanation degrade, execution and verification do not |
+
+Verified by `tests/test_ml_genai_failure_modes.py` and
+`tests/test_recovery_executor.py`.
+
+### 19.9 Concurrency & idempotency recap
+
+Same contract as Stage 8, now load-tested:
+
+- The idempotency key is `sha256(transaction_id + action + policy_version +
+  fingerprint)` and is UNIQUE in the database.
+- A replay returns the original result; a concurrent duplicate loses the
+  insert race, catches `IntegrityError`, and replays the winner's result —
+  bounded retries, one commit per orchestration.
+- Verified by `tests/test_recovery_concurrency_hard.py`.
+
+### 19.10 Stage 9 architecture (hardening view)
+
+```
+                        request
+                           |
+              +------------v-------------+
+              |   api/middleware.py      |
+              |  X-Request-ID (validate/ |
+              |  generate/echo)          |
+              |  security headers        |
+              |  rate limiter (per key,  |
+              |  in-process)             |
+              +------------+-------------+
+                           |
+              +------------v-------------+
+              |   auth (constant-time)   |
+              |  AuthContext + role +    |
+              |  customer_id             |
+              +------------+-------------+
+                           |
+        +------------------+------------------+
+        |                  |                  |
++-------v-------+  +-------v--------+  +------v-----------+
+| customer-owned|  | ingestion      |  | recovery /       |
+| reads (403 on |  | provider_event |  | risk / stats     |
+| foreign user) |  | digest conflict|  | (CUSTOMER excl.) |
++-------+-------+  +-------+--------+  +------+-----------+
+        |                  |                  |
+        +--------+---------+---------+--------+
+                 |                     |
+      +----------v----------+  +-------v------------------+
+      | digital_twin (domain|  | audit.py: security_audit |
+      | events, append-only)|  | (ALLOWED/DENIED, key     |
+      +----------+----------+  | NAMES, request_id)       |
+                 |             +--------------------------+
+      +----------v----------+
+      | sandbox_ledger_     |  scripts/seed_demo.py (DEMO-S1..S6)
+      | entries (persisted, |  POST /sandbox/reset (staff)
+      | SIMULATED)          |
+      +---------------------+
+```
+
+Verification: `scripts/stage9_e2e.py` runs the security flow (T1–T13,
+including a secret-leakage sweep) against a live API; unit coverage in
+`tests/test_customer_ownership.py`, `test_rate_limiting.py`,
+`test_request_ids.py`, `test_audit.py`, `test_event_conflicts.py`,
+`test_sandbox_persistence.py`, `test_ml_genai_failure_modes.py`,
+`test_recovery_concurrency_hard.py`.

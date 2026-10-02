@@ -7,8 +7,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from api.core.exceptions import NotFoundError
-from api.core.security import AuthContext, require_roles
+from api.core.exceptions import ForbiddenError, NotFoundError
+from api.core.security import AuthContext, can_access_transaction, require_roles
 from api.db.database import get_db
 from api.schemas.transaction import (
     TimelineEvent,
@@ -71,12 +71,16 @@ def ingest_transaction_event(
 def get_transaction_by_id(
     transaction_id: str,
     db: Session = Depends(get_db),
-    # CUSTOMER intentionally excluded until identity is user-bound (no
-    # ownership scoping exists yet — see api/core/security.py)
-    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT")),
+    # Stage 9: CUSTOMER opened with OWNERSHIP scoping — a customer key may
+    # read only transactions whose user_id matches its bound identity.
+    # Unowned AND unknown ids both return 403 (non-enumerating).
+    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT", "CUSTOMER")),
 ):
     tx = get_transaction(db, transaction_id)
-    if tx is None:
+    if auth.role == "CUSTOMER":
+        if not can_access_transaction(auth, tx):
+            raise ForbiddenError("transaction not accessible")
+    elif tx is None:
         raise HTTPException(status_code=404, detail=f"transaction {transaction_id} not found")
     return tx
 
@@ -89,10 +93,15 @@ def get_transaction_by_id(
 def get_transaction_timeline(
     transaction_id: str,
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT")),
+    # Stage 9: CUSTOMER opened with OWNERSHIP scoping (same contract as the
+    # single-transaction read: unowned/unknown → non-enumerating 403).
+    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT", "CUSTOMER")),
 ):
     tx = get_transaction(db, transaction_id)
-    if tx is None:
+    if auth.role == "CUSTOMER":
+        if not can_access_transaction(auth, tx):
+            raise ForbiddenError("transaction not accessible")
+    elif tx is None:
         raise NotFoundError(f"transaction {transaction_id} not found")
     events = get_timeline(db, transaction_id)
     return TimelineResponse(

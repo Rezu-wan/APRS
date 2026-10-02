@@ -5,12 +5,17 @@ payment-domain event ingestion API.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 from api.core.payment_lifecycle import EVENT_TYPE_INFO, EVENT_TYPES, OUTCOMES, SOURCES
+
+MAX_METADATA_JSON_CHARS = 4096
+MAX_FUTURE_SKEW = timedelta(hours=24)  # clock-skew guard
+PROVIDER_EVENT_ID_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
 
 
 def _coerce_utc(v):
@@ -32,7 +37,9 @@ class PaymentEventIn(BaseModel):
     client cannot mislabel evidence.
     """
 
-    provider_event_id: str = Field(min_length=1, max_length=128, examples=["EVT-PROV-0001"])
+    provider_event_id: str = Field(
+        pattern=PROVIDER_EVENT_ID_PATTERN, examples=["EVT-PROV-0001"],
+    )
     event_type: str = Field(examples=["GATEWAY_TIMEOUT"])
     source: str = Field(examples=["GATEWAY"])
     status: str = Field(examples=["TIMEOUT"])
@@ -40,6 +47,22 @@ class PaymentEventIn(BaseModel):
     reference_id: str | None = Field(default=None, max_length=128)
     latency_ms: int | None = Field(default=None, ge=0, le=3_600_000)
     metadata: dict[str, Any] | None = None
+
+    @field_validator("metadata")
+    @classmethod
+    def _bounded_metadata(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Keys must be strings and the serialized JSON must stay within
+        MAX_METADATA_JSON_CHARS — validated, never silently coerced."""
+        if v is None:
+            return v
+        for key in v:
+            if not isinstance(key, str):
+                raise ValueError("metadata keys must be strings")
+        if len(json.dumps(v, separators=(",", ":"), default=str)) > MAX_METADATA_JSON_CHARS:
+            raise ValueError(
+                f"metadata JSON exceeds {MAX_METADATA_JSON_CHARS} characters"
+            )
+        return v
 
     @field_validator("event_type")
     @classmethod
@@ -65,7 +88,16 @@ class PaymentEventIn(BaseModel):
     @field_validator("event_timestamp")
     @classmethod
     def _assume_utc(cls, v: datetime) -> datetime:
-        return _coerce_utc(v)
+        v = _coerce_utc(v)
+        # clock-skew guard: reject domain timestamps more than MAX_FUTURE_SKEW
+        # in the future — past events are always accepted (late arrival is the
+        # normal case for provider redelivery); future-skew is evidence tampering
+        now = datetime.now(timezone.utc)
+        if v > now + MAX_FUTURE_SKEW:
+            raise ValueError(
+                f"event_timestamp more than {MAX_FUTURE_SKEW} in the future"
+            )
+        return v
 
 
 class PaymentEventOut(BaseModel):

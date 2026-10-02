@@ -115,6 +115,7 @@ function RecoveryError({ error, retry }: { error: unknown; retry: () => void }) 
     <ErrorState
       title="Autonomous recovery unavailable"
       message={error instanceof ApiError ? error.message : "Could not load the recovery record."}
+      error={error}
       onRetry={retry}
     />
   );
@@ -258,6 +259,20 @@ function RecoveryBody({ record }: { record: import("../../types/api").RecoveryRe
         Policy {record.policy_version} · created {formatDateTime(record.created_at)}
         {record.verified_at ? ` · verified ${formatDateTime(record.verified_at)}` : ""}
       </p>
+      {/* Stage 9 auditability line — shown only when the backend provides the
+          fields (older backends omit them). The idempotency key is truncated
+          for display; the full key lives in the server audit log. */}
+      {(record.idempotency_key || record.executor_version || record.verifier_version) && (
+        <p className="font-mono text-xs text-slate-400" data-testid="recovery-audit-line">
+          {record.idempotency_key && (
+            <span>idempotency key {record.idempotency_key.slice(0, 12)}…</span>
+          )}
+          {record.idempotency_key && (record.executor_version || record.verifier_version) && " · "}
+          {record.executor_version && <span>executor {record.executor_version}</span>}
+          {record.executor_version && record.verifier_version && " · "}
+          {record.verifier_version && <span>verifier {record.verifier_version}</span>}
+        </p>
+      )}
     </div>
   );
 }

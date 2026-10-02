@@ -18,6 +18,8 @@ risk_assessments     Stage 7 hybrid risk assessment EVIDENCE (rules + ML),
                      idempotent
 recovery_actions     Stage 8 autonomous recovery action — SANDBOX execution
                      record; idempotency_key is the UNIQUE anchor
+security_audit /     Stage 9 security audit trail + write-through persistence
+sandbox_ledger_entries for the simulated sandbox ledger
 
 Timestamps are timezone-aware UTC. UUIDs are stored as 36-char strings for
 portability across PostgreSQL and SQLite.
@@ -316,3 +318,53 @@ class RecoveryActionRecord(Base):
     )
 
     transaction: Mapped[Transaction] = relationship()
+
+
+class SecurityAuditRecord(Base):
+    """Stage 9 security audit trail — WHO did WHAT to WHICH resource, for the
+    actions that matter to the safety model. Distinct from the Digital Twin:
+    the twin is the payment narrative; this is the security/ops record.
+    Never logs secrets — actor_id is the key NAME (api_key_admin), not the key."""
+
+    __tablename__ = "security_audit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    audit_id: Mapped[str] = mapped_column(
+        String(36), unique=True, default=new_event_id, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    actor_type: Mapped[str] = mapped_column(String(16))  # ROLE value or "ANONYMOUS"
+    actor_id: Mapped[str] = mapped_column(String(48))  # key_name or customer_id
+    action: Mapped[str] = mapped_column(String(40), index=True)  # AUDIT_* constant
+    resource_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    resource_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    result: Mapped[str] = mapped_column(String(12))  # ALLOWED | DENIED
+    reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    audit_metadata: Mapped[dict | None] = mapped_column(
+        "metadata", JSON, nullable=True
+    )
+
+
+class SandboxLedgerEntry(Base):
+    """Write-through persistence for the SIMULATED sandbox ledger (Stage 8's
+    in-memory ledger remains the live state; this table survives process
+    restarts so recovery references stay verifiable). Still 100% simulated."""
+
+    __tablename__ = "sandbox_ledger_entries"
+
+    transaction_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    held_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0")
+    )
+    released_amount: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0")
+    )
+    currency: Mapped[str] = mapped_column(String(3), default="BDT")
+    provider_reference: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )

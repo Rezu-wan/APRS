@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     api_key_admin: str = "dev-admin-key"
     api_key_support: str = "dev-support-key"
     api_key_customer: str = "dev-customer-key"
+    # Stage 9: multiple customer identities. Format "key:customer_id" pairs.
+    customer_api_keys: str = "dev-customer-alice:alice,dev-customer-bob:bob"
+
+    # --- Stage 9 rate limiting (in-memory, per-process; see api/middleware.py)
+    rate_limit_enabled: bool = True
 
     # --- recovery policy (deliberately separate from the ML model so
     #     thresholds/business rules can change without retraining) -----------
@@ -66,6 +71,30 @@ class Settings(BaseSettings):
     # provider with an in-memory ledger. Real providers are a post-hackathon
     # concern; the interface is the contract.
     payment_provider: str = "mock"  # mock (only implementation in Stage 8)
+
+    @property
+    def customer_key_map(self) -> dict[str, str]:
+        """API key -> customer_id for CUSTOMER-role keys.
+
+        Includes the legacy single ``api_key_customer`` (mapped to the
+        sentinel identity "dev-customer", which owns no transactions in
+        tests) plus every ``key:customer_id`` pair from
+        ``customer_api_keys``. Never include secrets in log lines built
+        from this map's keys.
+        """
+        mapping: dict[str, str] = {}
+        if self.api_key_customer:
+            mapping[self.api_key_customer] = "dev-customer"
+        for pair in self.customer_api_keys.split(","):
+            pair = pair.strip()
+            if not pair:
+                continue
+            key, sep, customer_id = pair.partition(":")
+            key = key.strip()
+            customer_id = customer_id.strip()
+            if sep and key and customer_id:
+                mapping[key] = customer_id
+        return mapping
 
     @property
     def cors_origin_list(self) -> list[str]:

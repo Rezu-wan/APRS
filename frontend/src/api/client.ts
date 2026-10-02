@@ -5,17 +5,22 @@ import { clearSession, getSession } from "../lib/session";
 export class ApiError extends Error {
   readonly status: number | null;
   readonly code: string;
+  /** Server-side correlation id (Stage 9): parsed from the error body's
+   * `request_id`, falling back to the `X-Request-ID` response header. Used by
+   * ErrorState so staff can quote it against server logs in a live demo. */
+  readonly requestId?: string;
 
-  constructor(status: number | null, code: string, message: string) {
+  constructor(status: number | null, code: string, message: string, requestId?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.requestId = requestId;
   }
 }
 
 interface BackendErrorBody {
-  error?: { code?: unknown; message?: unknown };
+  error?: { code?: unknown; message?: unknown; request_id?: unknown };
 }
 
 export const apiClient: AxiosInstance = axios.create({
@@ -32,6 +37,12 @@ apiClient.interceptors.request.use((config) => {
   return config;
 });
 
+/**
+ * Stage 9: HTTP 429 is surfaced to the UI as a normal error (code RATE_LIMITED,
+ * with the Retry-After value honored only by the server) — no automatic retry.
+ * A silent retry would hide rate limiting from the demo; the user sees the
+ * honest error and can retry manually.
+ */
 function normalizeError(err: unknown): ApiError {
   if (axios.isAxiosError(err)) {
     const axiosErr = err as AxiosError;
@@ -62,19 +73,43 @@ function normalizeError(err: unknown): ApiError {
 
     const body = axiosErr.response.data as BackendErrorBody | undefined;
     const backendError = body?.error;
+    // Correlation id: prefer the body's request_id; fall back to the response header.
+    const headerRequestId = axiosErr.response.headers?.["x-request-id"];
+    const requestId =
+      backendError && typeof backendError === "object" && typeof backendError.request_id === "string"
+        ? backendError.request_id
+        : typeof headerRequestId === "string" && headerRequestId.length > 0
+          ? headerRequestId
+          : undefined;
     if (backendError && typeof backendError === "object") {
+      // 429 always normalizes to RATE_LIMITED so the UI can show one honest message.
+      const code =
+        status === 429
+          ? "RATE_LIMITED"
+          : typeof backendError.code === "string"
+            ? backendError.code
+            : "UNKNOWN";
       return new ApiError(
         status,
-        typeof backendError.code === "string" ? backendError.code : "UNKNOWN",
+        code,
         typeof backendError.message === "string"
           ? backendError.message
-          : "The server returned an error."
+          : "The server returned an error.",
+        requestId
       );
     }
-    return new ApiError(status, "UNKNOWN", "The server returned an error.");
+    return new ApiError(
+      status,
+      status === 429 ? "RATE_LIMITED" : "UNKNOWN",
+      "The server returned an error.",
+      requestId
+    );
   }
   return new ApiError(null, "UNKNOWN", "An unexpected error occurred.");
 }
+
+/** Exposed for tests: normalize a raw (axios-shaped) error into an ApiError. */
+export { normalizeError };
 
 /** Normalize any thrown error into an ApiError. Re-throwing from the interceptor chain. */
 apiClient.interceptors.response.use(

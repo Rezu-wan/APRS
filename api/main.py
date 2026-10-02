@@ -22,8 +22,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from api import middleware as api_middleware
 from api.core.config import DEV_KEY_WARNING, get_settings
 from api.core.exceptions import AppError
+from api.core.request_context import RequestIdLogFilter, get_request_id
 from api.core.security import ROLES
 from api.db.database import engine
 from api.routes import (
@@ -34,6 +36,7 @@ from api.routes import (
     recovery,
     reconstruction,
     risk_assessment,
+    sandbox,
     stats,
     transactions,
 )
@@ -41,8 +44,11 @@ from api.services.ml_service import get_ml_service
 
 logging.basicConfig(
     level=get_settings().log_level.upper(),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    format="%(asctime)s %(levelname)s %(name)s [request_id=%(request_id)s] %(message)s",
 )
+# every log record carries the current request id ("-" outside a request)
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(RequestIdLogFilter())
 logger = logging.getLogger("payment_recovery.app")
 
 
@@ -54,6 +60,9 @@ async def lifespan(app: FastAPI):
     if settings.uses_dev_api_keys and settings.environment == "production":
         raise RuntimeError("refusing to start in production with dev API keys")
     get_ml_service().load(settings)
+    from api.services.payment_provider import restore_sandbox_ledger  # Stage 9
+
+    restore_sandbox_ledger()
     logger.info("startup complete (env=%s, roles=%s)", settings.environment, list(ROLES))
     yield
     logger.info("shutdown")
@@ -87,6 +96,8 @@ app.include_router(payment_events.router)
 app.include_router(reconstruction.router)
 app.include_router(risk_assessment.router)
 app.include_router(autonomous_recovery.router)
+app.include_router(sandbox.sandbox_router)
+app.include_router(sandbox.audit_router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware
@@ -98,6 +109,9 @@ if get_settings().cors_origin_list:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+# Stage 9: request-id propagation, security headers, per-key rate limiting
+app.middleware("http")(api_middleware.request_middleware)
 
 
 # --------------------------------------------------------------------------
@@ -112,6 +126,7 @@ async def integrity_error_handler(request: Request, exc: IntegrityError):
             "error": {
                 "code": "CONFLICT",
                 "message": "request conflicts with stored data",
+                "request_id": get_request_id(),
             }
         },
     )
@@ -122,9 +137,36 @@ async def app_error_handler(request: Request, exc: AppError):
     logger.warning(
         "application error on %s: %s (%s)", request.url.path, exc.message, exc.code
     )
+    # Stage 9: permission denials land in the security audit trail (best-effort —
+    # never breaks the error response; AUTH_FAILURE rows are written by the
+    # auth dependency itself, so only FORBIDDEN is mirrored here). The actor is
+    # identified by KEY NAME only — the raw key never enters logs or audit.
+    if exc.code == "INSUFFICIENT_PERMISSIONS":
+        try:
+            from api.core.security import key_name_from_request
+            from api.services.audit import AUDIT_FORBIDDEN, record_security_event
+
+            record_security_event(
+                actor_type="ANONYMOUS",
+                actor_id=key_name_from_request(request) or "unknown",
+                action=AUDIT_FORBIDDEN,
+                resource_type="endpoint",
+                resource_id=request.url.path,
+                request_id=get_request_id(),
+                result="DENIED",
+                reason=exc.message[:255],
+            )
+        except Exception:  # noqa: BLE001 — audit is best-effort by contract
+            logger.debug("security audit write failed (ignored)", exc_info=True)
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": {"code": exc.code, "message": exc.message}},
+        content={
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+                "request_id": get_request_id(),
+            }
+        },
     )
 
 
@@ -137,7 +179,14 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     ]
     return JSONResponse(
         status_code=422,
-        content={"error": {"code": "VALIDATION_ERROR", "message": "invalid request", "details": details}},
+        content={
+            "error": {
+                "code": "VALIDATION_ERROR",
+                "message": "invalid request",
+                "details": details,
+                "request_id": get_request_id(),
+            }
+        },
     )
 
 
@@ -145,7 +194,13 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 async def http_error_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": {"code": f"HTTP_{exc.status_code}", "message": str(exc.detail)}},
+        content={
+            "error": {
+                "code": f"HTTP_{exc.status_code}",
+                "message": str(exc.detail),
+                "request_id": get_request_id(),
+            }
+        },
     )
 
 
@@ -158,6 +213,7 @@ async def unhandled_error_handler(request: Request, exc: Exception):
             "error": {
                 "code": "INTERNAL_ERROR",
                 "message": "unexpected server error",
+                "request_id": get_request_id(),
             }
         },
     )
