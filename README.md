@@ -5,7 +5,8 @@ recovery risk with ML, deciding — via a **deterministic policy** — whether t
 auto-release the customer's limit, and recording every state change in an
 **append-only Digital Twin event log**.
 
-Built in four completed stages; the operator frontend is a later stage.
+Built in five completed stages (dataset, ML engine, API, GenAI explanations,
+React frontend).
 
 > **Honest status / limitations**
 > - **No real payment provider is connected.** `PaymentProvider` is a named
@@ -17,8 +18,9 @@ Built in four completed stages; the operator frontend is a later stage.
 >   The application logs a warning when they are in use and *refuses to start*
 >   in `ENVIRONMENT=production` with them.
 > - **`docker compose` could not be run on this machine** (Docker is not
->   installed here). The compose file is provided as-is and untested locally;
->   the SQLite path has been verified end-to-end.
+>   installed here). The compose file — including the Stage 5 `frontend`
+>   service — is provided as-is and untested locally; the SQLite path and the
+>   frontend npm dev-server path have been verified end-to-end.
 
 ---
 
@@ -37,8 +39,10 @@ Built in four completed stages; the operator frontend is a later stage.
                                               |                only)       |
                                               +------------|--|------------+
                                                            |  |
-                                     Stage 4: GenAI    frontend
-                                     (EXPLAIN only)    (later stage)
+                                     Stage 4: GenAI    Stage 5: React
+                                     (EXPLAIN only)    frontend (frontend/)
+                                                       thin client, no
+                                                       authority of its own
 ```
 
 Flow: the **generator** produces the synthetic dataset; the **ML engine**
@@ -49,7 +53,10 @@ through a state machine (`INITIATED -> PROCESSING -> SUCCESS | FAILED/STALLED
 RECOVERY_REJECTED`), runs ML assessment on failure, applies the recovery
 policy, and atomically persists state + Digital Twin events. **GenAI (Stage 4)
 sits strictly AFTER the decision** — it only ever *explains* decisions, never
-makes them; the frontend is the remaining later stage.
+makes them. The **React frontend (Stage 5)** is a thin client over the API:
+it renders what the backend returns and submits actions for the backend to
+authorize and execute — it holds no state machine, no policy, and no data of
+its own.
 
 Key files:
 
@@ -66,6 +73,7 @@ Key files:
 | `api/services/ml_service.py` | Bridge to the Stage 2 models |
 | `api/services/ai/` | Stage 4 GenAI layer: `base.py` (AIProvider), `openai_provider.py`, `mock_provider.py`, `prompts.py`, `fallback.py`, `schemas.py` |
 | `api/db/models.py`, `api/db/migrations/` | SQLAlchemy models + Alembic (`ai_explanations` table added in Stage 4) |
+| `frontend/` | Stage 5 React SPA (Vite + TS + Tailwind); thin client over the API — see section 15 and `frontend/README.md` |
 
 ## 2. Environment setup
 
@@ -650,6 +658,8 @@ API_KEY_SYSTEM=... API_KEY_ADMIN=... API_KEY_SUPPORT=... API_KEY_CUSTOMER=...
 > built on, so `docker compose up --build` was **not executed here**. The
 > SQLite setup (section 3) is the verified path. Apply migrations inside the
 > container on first run: `docker compose exec api python -m alembic upgrade head`.
+> The Stage 5 `frontend` service (section 15) is included in the same compose
+> file and shares this untested-locally status.
 
 ## 13. Tests
 
@@ -669,3 +679,121 @@ python scripts/generate_dataset.py        # data/transactions.csv (25k rows)
 python -m ml.train                        # models/*.joblib + reports/
 python -m ml.evaluate                     # reports/ metrics and plots
 ```
+
+## 15. React frontend (Stage 5)
+
+`frontend/` is a thin-client single-page app over the API: React 18 + Vite +
+TypeScript + Tailwind, `react-router-dom` for routing, TanStack Query for
+fetching/caching, axios for transport, zod for response validation,
+`lucide-react` for icons. Full details in `frontend/README.md`.
+
+### 15.1 Architecture summary
+
+```
+ Browser -> React SPA (frontend/) --X-API-Key header--> FastAPI backend
+              renders only what the        (authoritative: state machine,
+              backend returns; no fake      deterministic policy, ML scores,
+              data, ever                    Digital Twin log, role checks)
+```
+
+The frontend holds **no authority**: it cannot decide recovery outcomes,
+cannot fabricate statistics, and its role checks are UI visibility only —
+the backend independently enforces authorization on every request (`403`).
+
+### 15.2 Prerequisites
+
+- Node.js 20+ and npm (frontend)
+- Python 3.12 environment set up per section 2 (backend)
+
+### 15.3 Running (two terminals)
+
+```bash
+# Terminal 1 — backend (section 5)
+uvicorn api.main:app --reload
+
+# Terminal 2 — frontend
+cd frontend
+npm install
+cp .env.example .env          # VITE_API_BASE_URL=http://localhost:8000/api/v1
+npm run dev                   # http://localhost:5173
+```
+
+CORS: the backend's `CORS_ORIGINS` must include `http://localhost:5173` (the
+Vite dev origin) or the browser will block every request — see section 4.
+
+### 15.4 Environment variables (frontend)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `VITE_API_BASE_URL` | `http://localhost:8000/api/v1` | Backend base URL the browser calls. |
+
+> **`VITE_` variables are public** — Vite inlines them into the served JS
+> bundle. Never put a secret in one. Real API keys stay in the backend
+> `.env` and never reach the frontend.
+
+### 15.5 Authentication
+
+The frontend uses the backend's `X-API-Key` auth (section 7). The user enters
+a key on `/login`; it is validated via `GET /api/v1/auth/me` and stored in
+`sessionStorage` (cleared when the tab closes). Every axios request attaches
+the header afterwards. For local development the documented `dev-*` keys
+(section 7) work; the same standing warning applies — they are insecure
+placeholders and rejected in `ENVIRONMENT=production`.
+
+| Role | Sees in the UI |
+|---|---|
+| `SYSTEM` / `ADMIN` | dashboard stats, transaction/timeline views, release-limit action, explanation generation |
+| `SUPPORT` | dashboard stats, transaction/timeline views, explanation generation (no release-limit button) |
+| `CUSTOMER` | login probe only — transaction reads are backend-restricted until identity is user-bound |
+
+Frontend role checks are **UI visibility only; the backend enforces
+authorization**.
+
+### 15.6 API integration
+
+| Endpoint | Method | Purpose in the UI |
+|---|---|---|
+| `/health` | GET | backend availability check (no auth) |
+| `/api/v1/auth/me` | GET | login role probe |
+| `/api/v1/stats/summary` | GET | dashboard aggregates (honest, computed from stored data) |
+| `/api/v1/transactions/{id}` | GET | transaction detail |
+| `/api/v1/transactions/{id}/timeline` | GET | Digital Twin timeline view |
+| `/api/v1/recovery/release-limit` | POST | SYSTEM/ADMIN action |
+| `/api/v1/explanations/transaction` | POST | SYSTEM/ADMIN/SUPPORT; body `{transaction_id, language: "bn"\|"en", audience: "customer"\|"support"\|"system"}` |
+
+### 15.7 Available routes
+
+| Path | Page |
+|---|---|
+| `/login` | API key entry |
+| `/dashboard` | Aggregate stats |
+| `/transactions` | Transaction list / lookup |
+| `/transactions/:transactionId` | Detail + timeline + role-gated actions |
+
+### 15.8 Production build
+
+```bash
+cd frontend
+npm run build     # typecheck + bundle -> frontend/dist/
+npm run preview   # serve the build locally
+```
+
+### 15.9 Docker
+
+A multi-stage `frontend/Dockerfile` builds the SPA (`node:20-alpine`,
+`npm ci` + `npm run build`, with `VITE_API_BASE_URL` as a **build arg**) and
+serves `dist/` via `nginx:alpine` (gzip, SPA fallback via
+`try_files ... /index.html`, no cache for `index.html`, long cache for hashed
+`assets/`). The root compose file adds a `frontend` service on port `5173:80`
+with `depends_on: api`. No secrets are baked into the image.
+
+> **Honesty note:** Docker is not installed on this machine, so the frontend
+> image build was **not executed here** (see section 12). The npm
+> dev-server path in 15.3 is the verified way to run the frontend.
+
+### 15.10 No fabricated statistics
+
+The frontend renders **only** what the backend returns — there are no
+hardcoded transactions, scores, timelines, or summary numbers anywhere in the
+client, and loading/empty/error states are shown explicitly. The backend
+remains the single authority for every fact the UI displays.
