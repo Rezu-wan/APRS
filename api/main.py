@@ -6,7 +6,8 @@ Run from the project root:
 
 Lifespan: ML artifacts are loaded ONCE at startup (no retraining, no data
 generation). Config, secrets, and policy thresholds all come from the
-environment via api/core/config.py.
+environment via api/core/config.py. Nothing AI-related is loaded at startup —
+the GenAI provider factory resolves at request time.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from api.core.config import DEV_KEY_WARNING, get_settings
 from api.core.exceptions import AppError
 from api.core.security import ROLES
 from api.db.database import engine
-from api.routes import recovery, transactions
+from api.routes import explanations, recovery, transactions
 from api.services.ml_service import get_ml_service
 
 logging.basicConfig(
@@ -54,16 +55,20 @@ app = FastAPI(
         "Stage 3 backend: transaction state machine, ML risk assessment "
         "(Stage 2 XGBoost engine), policy-driven recovery decisions, and an "
         "append-only Digital Twin event log.\n\n"
+        "Stage 4 adds a GenAI explanation layer: schema-controlled, cached "
+        "explanations of already-made decisions (GenAI explains; it never "
+        "decides).\n\n"
         "Authenticate with the `X-API-Key` header (roles: SYSTEM, ADMIN, "
         "SUPPORT, CUSTOMER — see .env.example)."
     ),
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
 app.include_router(transactions.router)
 app.include_router(transactions.ingest_router)
 app.include_router(recovery.router)
+app.include_router(explanations.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware
