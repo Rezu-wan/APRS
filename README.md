@@ -797,3 +797,116 @@ The frontend renders **only** what the backend returns — there are no
 hardcoded transactions, scores, timelines, or summary numbers anywhere in the
 client, and loading/empty/error states are shown explicitly. The backend
 remains the single authority for every fact the UI displays.
+
+---
+
+## 16. Payment event reconstruction engine (Stage 6)
+
+Stage 6 adds an **evidence layer** beneath the recovery system: it reconstructs
+*what actually happened* inside a payment flow and identifies — deterministically,
+from stored evidence — where the flow stalled or failed.
+
+> **Scope boundary (important):** Stage 6 answers **"What happened?"** only.
+> It never releases limits, never changes transaction state, and never makes
+> recovery decisions. Those remain the Stage 3 policy's exclusive authority.
+> Anomaly/fraud classification ("Is this suspicious?") is a later stage.
+
+### 16.1 Architecture
+
+```
+Payment Events (payment_events table)
+      ↓
+Event Ordering (by event_timestamp — NOT insertion order)
+      ↓
+Lifecycle Reconstruction (deterministic, pure function)
+      ↓
+Evidence Extraction (per-stage statuses + missing events)
+      ↓
+Root Cause Identification (first-match evidence rules)
+      ↓
+Digital Twin (ROOT_CAUSE_IDENTIFIED observation, append-only)
+      ↓
+GenAI Explanation (Stage 4 consumes evidence as authoritative context)
+```
+
+### 16.2 Payment event model
+
+Fine-grained payment-domain events are stored in the `payment_events` table
+(migration `56a442a6e5b1`), separate from the transaction-state Digital Twin:
+
+| Field | Purpose |
+|---|---|
+| `provider_event_id` | UNIQUE — idempotency anchor; real payment systems redeliver events, replays are safe |
+| `event_type` | 14-type vocabulary (`api/core/payment_lifecycle.py`): customer debit / gateway / merchant confirmation / settlement, each with confirmed/failed/timeout/error/not-confirmed outcomes |
+| `source` | BANK \| GATEWAY \| MERCHANT \| SETTLEMENT \| SYSTEM |
+| `event_timestamp` | domain time — the **authoritative ordering key** (insertion order is never trusted) |
+| `status`, `latency_ms`, `reference_id`, `metadata` | evidence details |
+
+Stored events are **observed facts only**. "Not observed" is never stored —
+it is *derived* for absent evidence at reconstruction time, so the system
+never pretends an event happened.
+
+### 16.3 Reconstruction engine
+
+`api/services/event_reconstruction.py` — a pure, deterministic function.
+No LLM, no randomness, no guessing:
+
+- **Per-stage status** from observed terminal events; progress-only stages are
+  `OBSERVED`; absent stages are `NOT_OBSERVED` (explicit uncertainty).
+- **Root cause** by first-match priority: debit failure → gateway timeout/error →
+  merchant timeout/error → settlement failure/not-confirmed → full success (`NONE`)
+  → otherwise `INCOMPLETE` (evidence exists but no terminal outcome — reported as
+  unknown, never as a guessed failure).
+- **Confidence** = deterministic evidence coverage over the 7-event happy path
+  (e.g. success 1.0, merchant timeout 0.71, gateway timeout 0.43, debit failure 0.14).
+- **Evidence summary**: human-readable English lines per stage + a conclusion.
+
+### 16.4 APIs
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/transactions/{id}/payment-events` | Batch ingestion (SYSTEM/ADMIN). Idempotent on `provider_event_id`; source/status are derived from the vocabulary, not client claims |
+| `GET /api/v1/transactions/{id}/reconstruction` | Run the engine (SYSTEM/ADMIN/SUPPORT). Records a `ROOT_CAUSE_IDENTIFIED` Digital Twin observation on first reconstruction per root cause (idempotent — repeats return the same result without appending) |
+
+### 16.5 Payment event simulator
+
+`scripts/payment_event_simulator.py` generates realistic event sequences for
+eight scenarios (`success`, `gateway_timeout`, `gateway_error`, `merchant_timeout`,
+`merchant_error`, `settlement_failure`, `settlement_not_confirmed`, `debit_failure`):
+
+```bash
+# print a deterministic merchant-timeout sequence
+py -m scripts.payment_event_simulator --transaction-id TXN-SIM-1 --scenario merchant_timeout --seed 42
+
+# create the transaction, then ingest its events (idempotent — re-run safely)
+curl -s -X POST http://127.0.0.1:8000/api/v1/transaction/event -H "Content-Type: application/json" \
+  -H "X-API-Key: dev-system-key" -d '{"transaction_id":"TXN-SIM-1","user_id":"U-1","merchant_id":"M-1","amount":1200,"status":"FAILED","failure_reason":"Timeout"}'
+py -m scripts.payment_event_simulator --transaction-id TXN-SIM-1 --scenario merchant_timeout --seed 42 --ingest
+```
+
+### 16.6 Digital Twin integration
+
+Reconstruction appends an **observation** (not a state transition):
+`ROOT_CAUSE_IDENTIFIED` with structured metadata (root_cause, failure_stage,
+last_successful_stage, all four stage statuses, missing_events,
+reconstruction_version). Append-only, like every twin event; duplicates for an
+unchanged root cause are suppressed.
+
+### 16.7 GenAI integration
+
+`ExplanationContext` now optionally carries `ReconstructionEvidence` (root cause,
+stage statuses, evidence lines). `PROMPT_VERSION` is now **v2**; the fingerprint
+includes the reconstruction, so cached explanations regenerate when the evidence
+changes. Customer payloads exclude `missing_events` (internal bookkeeping) but
+include the evidence story; support payloads include everything. Deterministic
+fallback templates speak the root cause in Bangla and English.
+
+### 16.8 Limitations (honest)
+
+- **Synthetic/sandbox payment environment** — events come from the local
+  simulator; there is **no real bank/gateway/settlement integration**. Do not
+  interpret stage statuses as real banking facts.
+- `INCOMPLETE` reconstructions report unknown outcomes rather than guessing.
+- Confidence is evidence coverage, not a probability of correctness.
+- Event redelivery beyond the first occurrence is tolerated (deduplicated) but
+  duplicates remain visible in `ordered_events` for audit purposes.
