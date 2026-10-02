@@ -57,7 +57,13 @@ describe("AutonomousRecoveryPanel", () => {
 
     expect(await screen.findByText("Recovery blocked")).toBeInTheDocument();
     expect(screen.getByText("Blocked")).toBeInTheDocument();
-    expect(screen.getByText(/Blocked:/)).toBeInTheDocument();
+    // Stage 10: structured blocked block (heading + humanized reason + action + provider).
+    expect(screen.getByText("RECOVERY BLOCKED")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Multiple debit evidence detected — releasing funds could double/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("No automatic recovery").length).toBeGreaterThan(0);
+    expect(screen.getByText("NOT CALLED")).toBeInTheDocument();
     expect(screen.getByText("Not verified")).toBeInTheDocument();
     expect(screen.queryByText(/Passed — released amount/)).not.toBeInTheDocument();
   });

@@ -8,6 +8,10 @@ import { StatusBadge } from "../components/transaction/StatusBadge";
 import { TransactionSummary, formatAmount } from "../components/transaction/TransactionSummary";
 import { RiskIndicator } from "../components/recovery/RiskIndicator";
 import { RecoveryCard } from "../components/recovery/RecoveryCard";
+import { RecoveryPipeline } from "../components/pipeline/RecoveryPipeline";
+import { SafetyGateCard } from "../components/safety/SafetyGateCard";
+import { VerificationCard } from "../components/recovery/VerificationCard";
+import { SandboxLedgerCard } from "../components/sandbox/SandboxLedgerCard";
 import { ReconstructionPanel } from "../components/reconstruction/ReconstructionPanel";
 import { AutonomousRecoveryPanel } from "../components/recovery/AutonomousRecoveryPanel";
 import { RiskAssessmentPanel } from "../components/risk/RiskAssessmentPanel";
@@ -105,6 +109,9 @@ export default function TransactionDetails() {
         </div>
       </header>
 
+      {/* Stage 10 — pipeline visualization directly under the header */}
+      <RecoveryPipeline transactionId={transaction.transaction_id} />
+
       <TransactionSummary transaction={transaction} />
 
       <RoleGate allowed={["SYSTEM", "ADMIN", "SUPPORT"]}>
@@ -133,14 +140,15 @@ export default function TransactionDetails() {
 
           <RecoveryCard transaction={transaction} />
         </div>
+
+        <AutonomousRecoveryPanel transactionId={transaction.transaction_id} />
+
+        {/* Simulated sandbox ledger — backend gates /sandbox/ledger to staff */}
+        <SandboxLedgerCard transactionId={transaction.transaction_id} />
       </RoleGate>
 
       {/* Payment flow reconstruction — all roles; CUSTOMER gets a muted 403 line */}
       <ReconstructionPanel transactionId={transaction.transaction_id} />
-
-      {/* Hybrid risk assessment — all roles; CUSTOMER gets a muted 403 line */}
-      <RiskAssessmentPanel transactionId={transaction.transaction_id} />
-      <AutonomousRecoveryPanel transactionId={transaction.transaction_id} />
 
       {/* Timeline — full width */}
       <section aria-labelledby="timeline-heading">
@@ -169,6 +177,15 @@ export default function TransactionDetails() {
           )}
         </div>
       </section>
+
+      {/* Safety gate — derived checklist from fresh evidence */}
+      <SafetyGateCard transactionId={transaction.transaction_id} />
+
+      {/* Recovery verification — self-fetching; muted honest state when none */}
+      <VerificationCard transactionId={transaction.transaction_id} />
+
+      {/* Hybrid risk assessment — all roles; CUSTOMER gets a muted 403 line */}
+      <RiskAssessmentPanel transactionId={transaction.transaction_id} />
 
       {/* Explanation — all roles; the card locks CUSTOMER to Bangla + customer audience */}
       <ExplanationCard transactionId={transaction.transaction_id} />
