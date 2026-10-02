@@ -11,6 +11,8 @@ recovery_decisions   one immutable decision row per transaction (UNIQUE
 ai_explanations      derived GenAI explanation cache (NON-AUTHORITATIVE) —
                      never part of the decision path; the only table the
                      explanation layer writes
+payment_events       Stage 6 payment-DOMAIN evidence stream (debit/gateway/
+                     merchant/settlement) — append-only, replay-safe
 
 Timestamps are timezone-aware UTC. UUIDs are stored as 36-char strings for
 portability across PostgreSQL and SQLite.
@@ -172,5 +174,39 @@ class AIExplanation(Base):
     is_fallback: Mapped[bool] = mapped_column(Boolean, default=False)
     context_fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    transaction: Mapped[Transaction] = relationship()
+
+
+class PaymentEvent(Base):
+    """Payment-DOMAIN event (Stage 6): fine-grained debit/gateway/merchant/
+    settlement evidence, distinct from the transaction-state Digital Twin.
+    Append-only. Idempotency anchor is provider_event_id (UNIQUE): real payment
+    systems redeliver events, so replays must be safe."""
+
+    __tablename__ = "payment_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    event_id: Mapped[str] = mapped_column(
+        String(36), unique=True, default=new_event_id, index=True
+    )
+    transaction_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("transactions.transaction_id"), index=True
+    )
+    provider_event_id: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(48))  # EVENT_TYPES value
+    source: Mapped[str] = mapped_column(String(16))  # PaymentSource
+    status: Mapped[str] = mapped_column(String(16))  # outcome constant
+    # domain time — the AUTHORITATIVE ordering key (arrival order is not
+    # guaranteed for redelivered provider events)
+    event_timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    reference_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    event_metadata: Mapped[dict | None] = mapped_column("metadata", JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
 
     transaction: Mapped[Transaction] = relationship()
