@@ -51,6 +51,16 @@ class Settings(BaseSettings):
     # --- ML artifacts -------------------------------------------------------
     model_dir: str = "models"
 
+    # --- GenAI explanation layer (Stage 4) ----------------------------------
+    # GenAI EXPLAINS decisions only — it never makes or changes them. The
+    # provider is selected by name so openai/gemini/mock can be swapped
+    # without touching the recovery path. "mock" needs no key and is the
+    # safe local default; production must set AI_PROVIDER=openai.
+    ai_provider: str = "mock"  # mock | openai
+    openai_api_key: str = ""  # server-side only — never sent to any client
+    openai_model: str = "gpt-4o-mini"
+    ai_timeout_seconds: float = 12.0  # hard cap so explanation can never hang a request
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
