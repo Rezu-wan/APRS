@@ -61,6 +61,12 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o-mini"
     ai_timeout_seconds: float = 12.0  # hard cap so explanation can never hang a request
 
+    # --- Stage 8 autonomous recovery (SANDBOX ONLY — no real money moves) ---
+    # The provider seam finally gets its implementation: a simulated sandbox
+    # provider with an in-memory ledger. Real providers are a post-hackathon
+    # concern; the interface is the contract.
+    payment_provider: str = "mock"  # mock (only implementation in Stage 8)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
