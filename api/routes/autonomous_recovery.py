@@ -112,6 +112,21 @@ def process_recovery(
         customer_reported_failure=body.customer_reported_failure,
     )
     db.commit()
+    if auth.role != "SYSTEM":
+        # Stage 9: autonomous triggers are SYSTEM; a human-triggered recovery
+        # is worth a security-audit row. Best-effort, never raises.
+        from api.services.audit import AUDIT_RECOVERY_PROCESS, record_security_event
+
+        record_security_event(
+            actor_type=auth.role,
+            actor_id=auth.key_name,
+            action=AUDIT_RECOVERY_PROCESS,
+            resource_type="transaction",
+            resource_id=transaction_id,
+            reason=f"human-triggered recovery: {result.get('decision')}",
+            audit_metadata={"decision": result.get("decision")},
+            db=db,
+        )
     return result
 
 
