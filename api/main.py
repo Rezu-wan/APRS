@@ -26,7 +26,15 @@ from api.core.config import DEV_KEY_WARNING, get_settings
 from api.core.exceptions import AppError
 from api.core.security import ROLES
 from api.db.database import engine
-from api.routes import auth, explanations, recovery, stats, transactions
+from api.routes import (
+    auth,
+    explanations,
+    payment_events,
+    recovery,
+    reconstruction,
+    stats,
+    transactions,
+)
 from api.services.ml_service import get_ml_service
 
 logging.basicConfig(
@@ -73,6 +81,8 @@ app.include_router(recovery.router)
 app.include_router(explanations.router)
 app.include_router(auth.router)
 app.include_router(stats.router)
+app.include_router(payment_events.router)
+app.include_router(reconstruction.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware
