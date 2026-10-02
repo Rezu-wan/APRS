@@ -15,9 +15,9 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from api.core.exceptions import NotFoundError
+from api.core.exceptions import ForbiddenError, NotFoundError
 from api.core.payment_lifecycle import PaymentStage
-from api.core.security import AuthContext, require_roles
+from api.core.security import AuthContext, can_access_transaction, require_roles
 from api.db.database import get_db
 from api.schemas.reconstruction import ReconstructionResult
 from api.services.event_reconstruction import reconstruct_from_events
@@ -40,13 +40,21 @@ router = APIRouter(prefix="/api/v1/transactions", tags=["reconstruction"])
 def get_reconstruction(
     transaction_id: str,
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT")),
+    # Stage 9: CUSTOMER opened with OWNERSHIP scoping. The reconstruction
+    # engine is pure-read over payment events and shows the payment story —
+    # acceptable for OWNED transactions (internals are stripped at the
+    # explanations layer, which stays the only surface for AI narratives).
+    # Unowned/unknown ids for CUSTOMER → non-enumerating 403.
+    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT", "CUSTOMER")),
 ):
     """Deterministically reconstruct the payment lifecycle from stored
     payment-domain events. Pure derivation (no LLM, no invented events) plus
     one idempotent Digital Twin append for the identified root cause."""
     tx = get_transaction(db, transaction_id)
-    if tx is None:
+    if auth.role == "CUSTOMER":
+        if not can_access_transaction(auth, tx):
+            raise ForbiddenError("transaction not accessible")
+    elif tx is None:
         raise NotFoundError(f"transaction {transaction_id} not found")
 
     events = get_payment_events(db, transaction_id)

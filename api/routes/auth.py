@@ -15,12 +15,17 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 class MeResponse(BaseModel):
     role: str
     key_name: str
+    # Stage 9: bound customer identity for CUSTOMER keys; null for staff.
+    customer_id: str | None = None
 
 
 @router.get("/me", response_model=MeResponse)
 def who_am_i(auth: AuthContext = Depends(get_auth_context)) -> MeResponse:
     """Identity probe for the frontend session bootstrap: validates the
-    X-API-Key and returns the role it maps to. All four roles allowed —
-    this is how a client learns its own role (the backend stays the
-    authorization authority; the frontend uses this ONLY for UI visibility)."""
-    return MeResponse(role=auth.role, key_name=auth.key_name)
+    X-API-Key and returns the role it maps to (plus the bound customer_id
+    for CUSTOMER keys). All four roles allowed — this is how a client
+    learns its own role (the backend stays the authorization authority; the
+    frontend uses this ONLY for UI visibility)."""
+    return MeResponse(
+        role=auth.role, key_name=auth.key_name, customer_id=auth.customer_id
+    )
