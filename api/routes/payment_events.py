@@ -31,7 +31,11 @@ logger = logging.getLogger("payment_recovery.payment_events")
     "/{transaction_id}/payment-events",
     response_model=PaymentEventBatchResponse,
     status_code=status.HTTP_200_OK,
-    responses={404: {"description": "Transaction not found"}},
+    responses={
+        404: {"description": "Transaction not found"},
+        409: {"description": "EVENT_CONFLICT: provider_event_id already "
+                           "exists with different content"},
+    },
 )
 def ingest_payment_events(
     transaction_id: str,
@@ -42,7 +46,8 @@ def ingest_payment_events(
 ):
     """Ingest a batch of provider-observed payment-domain events. Idempotent
     per provider_event_id — provider redeliveries count as duplicates and are
-    never re-inserted."""
+    never re-inserted. A redelivered id whose payload content differs from the
+    stored row is rejected with 409 EVENT_CONFLICT."""
     result = ingest_events(db, transaction_id, payload.events)
     # counts only — never log payloads
     logger.info(
