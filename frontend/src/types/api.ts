@@ -101,6 +101,13 @@ export interface StatsSummary {
     MANUAL_REVIEW: number;
     RECOVERY_REJECTED: number;
   };
+  /** Additive Stage 7 block — absent from older backend payloads. */
+  risk_assessments?: {
+    total: number;
+    by_anomaly_type: Record<string, number>;
+    by_risk_level: Record<string, number>;
+    recovery_candidates: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +261,15 @@ export const statsSummarySchema = z.object({
     MANUAL_REVIEW: z.number(),
     RECOVERY_REJECTED: z.number(),
   }),
+  // Additive Stage 7 block — optional so older backends still parse.
+  risk_assessments: z
+    .object({
+      total: z.number(),
+      by_anomaly_type: z.record(z.number()),
+      by_risk_level: z.record(z.number()),
+      recovery_candidates: z.number(),
+    })
+    .optional(),
 });
 
 export const paymentEventOutSchema = z.object({
@@ -284,6 +300,143 @@ export const reconstructionStageSchema = z.enum([
   "SETTLEMENT",
   "UNAVAILABLE",
 ]);
+
+// ---------------------------------------------------------------------------
+// Stage 7 — hybrid risk & anomaly classification
+// ---------------------------------------------------------------------------
+
+export type AnomalyType =
+  | "NONE"
+  | "GENUINE_FAILURE"
+  | "DOUBLE_DEDUCTION"
+  | "DUPLICATE_TRANSACTION"
+  | "SUCCESSFUL_BUT_UNCONFIRMED"
+  | "FALSE_COMPLAINT"
+  | "SUSPICIOUS"
+  | "INCOMPLETE"
+  | "UNKNOWN";
+
+export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN";
+
+export interface EvidenceItem {
+  code: string;
+  description: string;
+  source: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+}
+
+export interface TriggeredRule {
+  rule_id: string;
+  name: string;
+}
+
+export interface RiskAssessment {
+  transaction_id: string;
+  assessment_id: string;
+  anomaly_type: AnomalyType;
+  risk_level: RiskLevel;
+  risk_score: number;
+  ml_anomaly_score: number | null;
+  deterministic_risk_score: number;
+  recovery_candidate: boolean;
+  recovery_block_reason: string | null;
+  evidence: EvidenceItem[];
+  triggered_rules: TriggeredRule[];
+  reconstruction_root_cause: string | null;
+  reconstruction_confidence: number | null;
+  customer_reported_failure: boolean;
+  model_version: string;
+  rule_version: string;
+  created_at: string;
+}
+
+export interface RiskAssessmentResponse {
+  assessment: RiskAssessment;
+  reused: boolean;
+  digital_twin_event_recorded: boolean;
+}
+
+const severitySchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+
+export const evidenceItemSchema = z.object({
+  code: z.string(),
+  description: z.string(),
+  source: z.string(),
+  severity: severitySchema,
+});
+
+export const triggeredRuleSchema = z.object({
+  rule_id: z.string(),
+  name: z.string(),
+});
+
+export const riskAssessmentSchema = z.object({
+  transaction_id: z.string(),
+  assessment_id: z.string(),
+  anomaly_type: z.enum([
+    "NONE",
+    "GENUINE_FAILURE",
+    "DOUBLE_DEDUCTION",
+    "DUPLICATE_TRANSACTION",
+    "SUCCESSFUL_BUT_UNCONFIRMED",
+    "FALSE_COMPLAINT",
+    "SUSPICIOUS",
+    "INCOMPLETE",
+    "UNKNOWN",
+  ]),
+  risk_level: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL", "UNKNOWN"]),
+  risk_score: z.number(),
+  ml_anomaly_score: nullableNumber,
+  deterministic_risk_score: z.number(),
+  recovery_candidate: z.boolean(),
+  recovery_block_reason: z.string().nullable(),
+  evidence: z.array(evidenceItemSchema),
+  triggered_rules: z.array(triggeredRuleSchema),
+  reconstruction_root_cause: z.string().nullable(),
+  reconstruction_confidence: nullableNumber,
+  customer_reported_failure: z.boolean(),
+  model_version: z.string(),
+  rule_version: z.string(),
+  created_at: z.string(),
+});
+
+export const riskAssessmentResponseSchema = z.object({
+  assessment: riskAssessmentSchema,
+  reused: z.boolean(),
+  digital_twin_event_recorded: z.boolean(),
+});
+
+/**
+ * Display-only humanizers — softer wording for sensitive classifications
+ * (FALSE_COMPLAINT deliberately never uses the word "fraud").
+ */
+const ANOMALY_LABELS: Record<AnomalyType, string> = {
+  NONE: "No anomaly",
+  GENUINE_FAILURE: "Genuine failure",
+  DOUBLE_DEDUCTION: "Double deduction",
+  DUPLICATE_TRANSACTION: "Duplicate transaction",
+  SUCCESSFUL_BUT_UNCONFIRMED: "Successful but unconfirmed",
+  FALSE_COMPLAINT: "Possible false complaint",
+  SUSPICIOUS: "Suspicious — flagged for review",
+  INCOMPLETE: "Incomplete evidence",
+  UNKNOWN: "Unknown",
+};
+
+export function humanizeAnomaly(anomaly: AnomalyType | string): string {
+  return ANOMALY_LABELS[anomaly as AnomalyType] ?? anomaly;
+}
+
+const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+  CRITICAL: "Critical",
+  UNKNOWN: "Unknown",
+};
+
+export function humanizeRiskLevel(level: RiskLevel | string): string {
+  return RISK_LEVEL_LABELS[level as RiskLevel] ?? level;
+}
 
 export const reconstructionResultSchema = z.object({
   transaction_id: z.string(),

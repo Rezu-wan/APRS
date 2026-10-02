@@ -4,6 +4,8 @@ import type {
   PaymentEventOut,
   RecoveryDecisionResponse,
   ReconstructionResult,
+  RiskAssessment,
+  RiskAssessmentResponse,
   StatsSummary,
   TimelineEvent,
   TimelineResponse,
@@ -179,6 +181,56 @@ export function makeStats(overrides: Partial<StatsSummary> = {}): StatsSummary {
       MANUAL_REVIEW: 1,
       RECOVERY_REJECTED: 0,
     },
+    ...overrides,
+  };
+}
+
+export function makeRiskAssessment(
+  overrides: Partial<RiskAssessment> = {}
+): RiskAssessment {
+  return {
+    transaction_id: "TXN-1",
+    assessment_id: "ASSESS-1",
+    anomaly_type: "GENUINE_FAILURE",
+    risk_level: "LOW",
+    risk_score: 0.14,
+    ml_anomaly_score: 0.09,
+    deterministic_risk_score: 0.2,
+    recovery_candidate: true,
+    recovery_block_reason: null,
+    evidence: [
+      {
+        code: "GATEWAY_TIMEOUT",
+        description: "Gateway authorization timed out after 30,000 ms.",
+        source: "SIMULATOR",
+        severity: "MEDIUM",
+      },
+      {
+        code: "SINGLE_DEBIT",
+        description: "Exactly one customer bank debit confirmed.",
+        source: "SIMULATOR",
+        severity: "LOW",
+      },
+    ],
+    triggered_rules: [{ rule_id: "R1", name: "Genuine failure detected" }],
+    reconstruction_root_cause: "GATEWAY_TIMEOUT",
+    reconstruction_confidence: 0.8,
+    customer_reported_failure: false,
+    model_version: "xgb-v3",
+    rule_version: "rules-v2",
+    created_at: iso(2),
+    ...overrides,
+  };
+}
+
+export function makeRiskAssessmentResponse(
+  overrides: Partial<RiskAssessmentResponse> = {},
+  assessmentOverrides: Partial<RiskAssessment> = {}
+): RiskAssessmentResponse {
+  return {
+    assessment: makeRiskAssessment(assessmentOverrides),
+    reused: false,
+    digital_twin_event_recorded: true,
     ...overrides,
   };
 }
