@@ -3,7 +3,7 @@
 // import in a test file so the mocks are registered before pages load.
 import { vi } from "vitest";
 import { ApiError } from "../api/client";
-import type { ExplanationResponse, MeResponse, RecoveryDecisionResponse, StatsSummary, TimelineResponse, Transaction } from "../types/api";
+import type { ExplanationResponse, MeResponse, RecoveryDecisionResponse, ReconstructionResult, StatsSummary, TimelineResponse, Transaction } from "../types/api";
 
 vi.mock("../api/auth", () => ({
   getMe: vi.fn(),
@@ -14,6 +14,7 @@ vi.mock("../api/transactions", () => ({
   getTransaction: vi.fn(),
   getTimeline: vi.fn(),
   getStats: vi.fn(),
+  getReconstruction: vi.fn(),
 }));
 
 vi.mock("../api/recovery", () => ({
@@ -77,6 +78,17 @@ export const mockGetStats = vi.mocked(transactionsMod.getStats) as unknown as {
   mockReset: () => unknown;
   mock: { calls: unknown[][] };
 };
+export const mockGetReconstruction = vi.mocked(
+  transactionsMod.getReconstruction
+) as unknown as {
+  (id: string): Promise<ReconstructionResult>;
+  mockResolvedValue: (v: ReconstructionResult) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<ReconstructionResult>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
 
 export const mockReleaseLimit = vi.mocked(recoveryMod.releaseLimit) as unknown as {
   (id: string): Promise<RecoveryDecisionResponse>;
@@ -112,6 +124,16 @@ export function apiError(status: number, code: string, message: string): ApiErro
   return new ApiError(status, code, message);
 }
 
+/**
+ * Default behaviour for getReconstruction: the backend returns 404 when no
+ * reconstruction exists, which the panel renders as a compact muted line (no
+ * error alert). Existing tests that do not care about reconstruction keep
+ * passing without extra mock setup.
+ */
+function defaultReconstruction(): Promise<ReconstructionResult> {
+  return Promise.reject(new ApiError(404, "NOT_FOUND", "Transaction not found"));
+}
+
 /** A promise that never settles — used to hold requests in-flight. */
 export function neverPromise<T>(): Promise<T> {
   return new Promise<T>(() => {});
@@ -124,6 +146,8 @@ export function resetApiMocks(): void {
   mockGetTransaction.mockReset();
   mockGetTimeline.mockReset();
   mockGetStats.mockReset();
+  mockGetReconstruction.mockReset();
+  mockGetReconstruction.mockImplementation(defaultReconstruction as never);
   mockReleaseLimit.mockReset();
   mockRequestExplanation.mockReset();
 }

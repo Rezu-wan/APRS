@@ -199,6 +199,53 @@ export const explanationResponseSchema = z.object({
   generated_at: z.string(),
 });
 
+export type ReconstructionStage =
+  | "BANK_DEBIT"
+  | "GATEWAY"
+  | "MERCHANT_CONFIRMATION"
+  | "SETTLEMENT"
+  | "UNAVAILABLE";
+
+export type ReconstructionEventStatus =
+  | "CONFIRMED"
+  | "FAILED"
+  | "TIMEOUT"
+  | "ERROR"
+  | "NOT_CONFIRMED"
+  | "OBSERVED"
+  | "NOT_OBSERVED";
+
+export interface PaymentEventOut {
+  event_id: string;
+  transaction_id: string;
+  provider_event_id: string;
+  event_type: string;
+  source: string;
+  status: ReconstructionEventStatus;
+  event_timestamp: string;
+  reference_id: string | null;
+  latency_ms: number | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface ReconstructionResult {
+  transaction_id: string;
+  ordered_events: PaymentEventOut[];
+  current_stage: ReconstructionStage;
+  last_successful_stage: ReconstructionStage;
+  failure_stage: ReconstructionStage;
+  root_cause: string;
+  customer_debit_status: ReconstructionEventStatus;
+  gateway_status: ReconstructionEventStatus;
+  merchant_confirmation_status: ReconstructionEventStatus;
+  settlement_status: ReconstructionEventStatus;
+  reconstruction_confidence: number;
+  missing_events: string[];
+  evidence_summary: string[];
+  reconstructed_at: string;
+  digital_twin_event_recorded: boolean;
+}
+
 export const statsSummarySchema = z.object({
   total: z.number(),
   by_state: z.record(z.number()),
@@ -207,4 +254,51 @@ export const statsSummarySchema = z.object({
     MANUAL_REVIEW: z.number(),
     RECOVERY_REJECTED: z.number(),
   }),
+});
+
+export const paymentEventOutSchema = z.object({
+  event_id: z.string(),
+  transaction_id: z.string(),
+  provider_event_id: z.string(),
+  event_type: z.string(),
+  source: z.string(),
+  status: z.enum([
+    "CONFIRMED",
+    "FAILED",
+    "TIMEOUT",
+    "ERROR",
+    "NOT_CONFIRMED",
+    "OBSERVED",
+    "NOT_OBSERVED",
+  ]),
+  event_timestamp: z.string(),
+  reference_id: z.string().nullable(),
+  latency_ms: nullableNumber,
+  metadata: z.record(z.unknown()).nullable(),
+});
+
+export const reconstructionStageSchema = z.enum([
+  "BANK_DEBIT",
+  "GATEWAY",
+  "MERCHANT_CONFIRMATION",
+  "SETTLEMENT",
+  "UNAVAILABLE",
+]);
+
+export const reconstructionResultSchema = z.object({
+  transaction_id: z.string(),
+  ordered_events: z.array(paymentEventOutSchema),
+  current_stage: reconstructionStageSchema,
+  last_successful_stage: reconstructionStageSchema,
+  failure_stage: reconstructionStageSchema,
+  root_cause: z.string(),
+  customer_debit_status: paymentEventOutSchema.shape.status,
+  gateway_status: paymentEventOutSchema.shape.status,
+  merchant_confirmation_status: paymentEventOutSchema.shape.status,
+  settlement_status: paymentEventOutSchema.shape.status,
+  reconstruction_confidence: z.number(),
+  missing_events: z.array(z.string()),
+  evidence_summary: z.array(z.string()),
+  reconstructed_at: z.string(),
+  digital_twin_event_recorded: z.boolean(),
 });

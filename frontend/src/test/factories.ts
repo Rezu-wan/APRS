@@ -1,7 +1,9 @@
 // Realistic fixture builders shared by all tests.
 import type {
   ExplanationResponse,
+  PaymentEventOut,
   RecoveryDecisionResponse,
+  ReconstructionResult,
   StatsSummary,
   TimelineEvent,
   TimelineResponse,
@@ -103,6 +105,58 @@ export function makeExplanation(overrides: Partial<ExplanationResponse> = {}): E
     is_fallback: false,
     cached: false,
     generated_at: iso(1),
+    ...overrides,
+  };
+}
+
+export function makeReconstructionEvent(
+  index: number,
+  overrides: Partial<PaymentEventOut> = {}
+): PaymentEventOut {
+  return {
+    event_id: `PEVT-${index}`,
+    transaction_id: "TXN-1",
+    provider_event_id: `PROV-${index}`,
+    event_type: "DEBIT_CONFIRMED",
+    source: "SIMULATOR",
+    status: "CONFIRMED",
+    event_timestamp: iso((index + 1) * 2),
+    reference_id: null,
+    latency_ms: null,
+    metadata: null,
+    ...overrides,
+  };
+}
+
+export function makeReconstruction(
+  overrides: Partial<ReconstructionResult> = {}
+): ReconstructionResult {
+  return {
+    transaction_id: "TXN-1",
+    ordered_events: [
+      makeReconstructionEvent(0, { event_type: "BANK_DEBIT_CONFIRMED", status: "CONFIRMED" }),
+      makeReconstructionEvent(1, { event_type: "GATEWAY_CONFIRMED", status: "CONFIRMED" }),
+      makeReconstructionEvent(2, { event_type: "MERCHANT_CONFIRMATION_TIMEOUT", status: "TIMEOUT" }),
+      makeReconstructionEvent(3, { event_type: "SETTLEMENT_NOT_CONFIRMED", status: "NOT_CONFIRMED" }),
+    ],
+    current_stage: "MERCHANT_CONFIRMATION",
+    last_successful_stage: "GATEWAY",
+    failure_stage: "MERCHANT_CONFIRMATION",
+    root_cause: "MERCHANT_CONFIRMATION_TIMEOUT",
+    customer_debit_status: "CONFIRMED",
+    gateway_status: "CONFIRMED",
+    merchant_confirmation_status: "TIMEOUT",
+    settlement_status: "NOT_CONFIRMED",
+    reconstruction_confidence: 0.71,
+    missing_events: ["SETTLEMENT_CONFIRMED"],
+    evidence_summary: [
+      "Customer bank debit confirmed after 210 ms.",
+      "Gateway authorization confirmed after 4,200 ms.",
+      "Merchant confirmation timed out after 30,000 ms.",
+      "Settlement was not confirmed by the provider.",
+    ],
+    reconstructed_at: iso(1),
+    digital_twin_event_recorded: true,
     ...overrides,
   };
 }

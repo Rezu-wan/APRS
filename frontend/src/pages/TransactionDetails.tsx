@@ -8,6 +8,7 @@ import { StatusBadge } from "../components/transaction/StatusBadge";
 import { TransactionSummary, formatAmount } from "../components/transaction/TransactionSummary";
 import { RiskIndicator } from "../components/recovery/RiskIndicator";
 import { RecoveryCard } from "../components/recovery/RecoveryCard";
+import { ReconstructionPanel } from "../components/reconstruction/ReconstructionPanel";
 import { Timeline } from "../components/timeline/Timeline";
 import { ExplanationCard } from "../components/explanation/ExplanationCard";
 
@@ -131,6 +132,9 @@ export default function TransactionDetails() {
           <RecoveryCard transaction={transaction} />
         </div>
       </RoleGate>
+
+      {/* Payment flow reconstruction — all roles; CUSTOMER gets a muted 403 line */}
+      <ReconstructionPanel transactionId={transaction.transaction_id} />
 
       {/* Timeline — full width */}
       <section aria-labelledby="timeline-heading">

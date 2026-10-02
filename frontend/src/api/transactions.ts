@@ -1,8 +1,10 @@
 import { get } from "./client";
 import {
+  reconstructionResultSchema,
   statsSummarySchema,
   timelineResponseSchema,
   transactionSchema,
+  type ReconstructionResult,
   type StatsSummary,
   type TimelineResponse,
   type Transaction,
@@ -18,6 +20,12 @@ export async function getTransaction(id: string): Promise<Transaction> {
 export async function getTimeline(id: string): Promise<TimelineResponse> {
   const data = await get<unknown>(`/transactions/${encodeURIComponent(id)}/timeline`);
   return timelineResponseSchema.parse(data);
+}
+
+/** GET /transactions/{id}/reconstruction — blocked for CUSTOMER (403), 404 for unknown transactions. */
+export async function getReconstruction(id: string): Promise<ReconstructionResult> {
+  const data = await get<unknown>(`/transactions/${encodeURIComponent(id)}/reconstruction`);
+  return reconstructionResultSchema.parse(data);
 }
 
 /** GET /stats/summary — blocked for CUSTOMER by the backend (403). */
