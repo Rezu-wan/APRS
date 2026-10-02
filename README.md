@@ -74,6 +74,13 @@ Key files:
 | `api/services/ai/` | Stage 4 GenAI layer: `base.py` (AIProvider), `openai_provider.py`, `mock_provider.py`, `prompts.py`, `fallback.py`, `schemas.py` |
 | `api/db/models.py`, `api/db/migrations/` | SQLAlchemy models + Alembic (`ai_explanations` table added in Stage 4) |
 | `frontend/` | Stage 5 React SPA (Vite + TS + Tailwind); thin client over the API — see section 15 and `frontend/README.md` |
+| `api/services/payment_provider.py` | Stage 8 mock sandbox provider (`MockPaymentProvider`, in-memory ledger, idempotent replay) |
+| `api/services/recovery_executor.py` | Stage 8 idempotent executor: safety gate → provider → verification, bounded retries |
+| `api/services/recovery_safety.py` | Stage 8 fresh-evidence safety gate (incl. new-settlement race protection) |
+| `api/services/recovery_decision_policy.py` | Stage 8 deterministic recovery decision policy |
+| `api/services/recovery_verifier.py` | Stage 8 post-execution verification (never `VERIFIED` without passing) |
+| `api/routes/autonomous_recovery.py` | Stage 8 `recovery/process` / `recovery/evaluate` / `recovery` endpoints |
+| `scripts/stage8_e2e.py` | Stage 8 live-API E2E verification (section 18) |
 
 ## 2. Environment setup
 
@@ -1108,3 +1115,186 @@ py -m scripts.stage7_e2e --api-url http://127.0.0.1:8000 --seed 42 --verbose
 | `reports/stage7_anomaly_model.md` | Model training report (honest metrics) |
 
 > **Stage 7 uses synthetic/sandbox data and is not validated against real banking fraud datasets.**
+
+---
+
+## 18. Autonomous recovery (Stage 8)
+
+Stages 6–7 answered *"what happened?"* and *"what does the evidence indicate?"*.
+Stage 8 finally **acts** — but only through a deterministic, auditable pipeline
+whose every step is owned by the backend:
+
+```
+Stage 6 Reconstruction → Stage 7 Risk Assessment → Recovery Policy → Safety Gate → Idempotent Executor → Sandbox Provider → Verification → Digital Twin
+```
+
+**The frontend never releases anything.** There is no human "release" click in
+the autonomous path: `POST /recovery/process` is backend-owned orchestration —
+safety and policy decide server-side, the executor runs, the twin records, and
+the frontend only **visualizes** the outcome (read-only evidence from
+`GET /recovery` and the timeline). The existing manual
+`POST /recovery/release-limit` (section 10) keeps working unchanged for the
+`MANUAL_REVIEW` path — see 18.8.
+
+### 18.1 Eligibility — the decision policy
+
+`api/services/recovery_decision_policy.py` is a pure function of (transaction,
+stored Stage 7 assessment, Stage 6 reconstruction). Exactly one shape is
+eligible:
+
+> `GENUINE_FAILURE` **+** risk `LOW`/`MEDIUM` **+** `recovery_candidate: true`
+> **+** exactly one debit confirmation **+** settlement not confirmed
+> → **`RELEASE_LIMIT`**.
+
+Every other taxonomy value is blocked with a stable reason code:
+
+| Case | Action | `blocked_reason` |
+|---|---|---|
+| `GENUINE_FAILURE` but risk rose to `HIGH`/`CRITICAL` since assessment (or caps exceeded) | `MANUAL_REVIEW` | `RISK_NO_LONGER_PERMITS` / `NOT_ELIGIBLE` |
+| `DOUBLE_DEDUCTION` | `NO_ACTION` | `DOUBLE_DEDUCTION` (manual financial review) |
+| `DUPLICATE_TRANSACTION`, `SUCCESSFUL_BUT_UNCONFIRMED`, `FALSE_COMPLAINT`, `SUSPICIOUS`, `UNKNOWN` | `NO_ACTION` / `MANUAL_REVIEW` | `NOT_ELIGIBLE` |
+| `INCOMPLETE` — not enough evidence to say anything | `NO_ACTION` | `INSUFFICIENT_EVIDENCE` |
+| `NONE` — payment completed | `NO_ACTION` | `ALREADY_SUCCESS` |
+
+`HIGH`/`CRITICAL` genuine failures are queued (`MANUAL_REVIEW_QUEUED`), never
+auto-released: the autonomous pipeline widens the funnel, it does not lower the
+bar.
+
+### 18.2 The safety gate — fresh evidence, nothing trusted
+
+Eligibility was decided on a snapshot. Before a single unit moves,
+`api/services/recovery_safety.py` **re-derives everything** from fresh data:
+events are reloaded, the reconstruction rebuilt, the latest stored assessment
+re-read, existing recovery rows checked. The recheck list:
+
+1. Transaction still in a recoverable state (`FAILED`, not already
+   `LIMIT_RELEASED` / recovered — `ALREADY_SUCCESS`, `ALREADY_RECOVERED`).
+2. **No new successful settlement** since the assessment —
+   `NEW_SUCCESSFUL_SETTLEMENT`. This is the race protection for spec section
+   10's scenario: a settlement confirmation that lands *while* recovery is
+   being considered must abort the release, otherwise the customer would be
+   repaid for a payment that actually succeeded.
+3. Still exactly one debit confirmation (`DOUBLE_DEDUCTION` otherwise).
+4. A current failure still exists and reconstruction still points at one
+   (`INSUFFICIENT_EVIDENCE` otherwise).
+5. Risk level still permits release (`RISK_NO_LONGER_PERMITS`).
+
+**When uncertain, DO NOT RECOVER** — the gate blocks on any doubt and the row
+lands in `BLOCKED` with the reason code.
+
+### 18.3 Idempotency and retries
+
+- The idempotency key is `sha256(transaction_id + action + policy_version +
+  evidence_fingerprint)`, enforced by a **DB UNIQUE constraint**
+  (`RecoveryActionRecord.idempotency_key`). Identical evidence replays the
+  stored row — the provider is never called twice for the same recovery.
+- The provider level is independently idempotent: `MockPaymentProvider`
+  detects replays of an already-processed release and returns the original
+  reference (`already_processed`) instead of double-releasing.
+- Retries are **bounded: max 3 attempts** on the same row, and only for
+  technical `FAILED` executions. Business blocks (`BLOCKED` rows) are
+  **never retried** — a policy refusal is an answer, not a transient error.
+
+### 18.4 The mock provider + sandbox ledger
+
+`api/services/payment_provider.py` implements `MockPaymentProvider`: an
+**in-memory** ledger (`ensure_hold` / `release_limit` move real state within
+it — a hold must exist before it can be released, a reference is issued per
+release). It resets on server restart. Every row, response, and twin event is
+labeled **SIMULATED** (`simulated: true` throughout the API surface).
+
+> **Autonomous recovery operates on a simulated sandbox provider. No real
+> financial transaction is performed.**
+
+### 18.5 Verification
+
+After execution, `api/services/recovery_verifier.py` runs 6 checks (provider
+reference issued, amount matches, hold state consistent, ledger entry present,
+status consistent, currency match). The row reaches **`VERIFIED`** — and the
+transaction **`LIMIT_RELEASED`** — **only if every check passes**; otherwise
+the row lands in a safe state (`FAILED`, bounded-retry eligible) and the
+transaction stays out of `LIMIT_RELEASED`.
+
+### 18.6 Digital Twin recovery lifecycle
+
+Append-only, as everywhere else. The recovery lifecycle is recorded as
+observations (`previous_state == new_state`) plus one real validated
+transition at the end:
+
+```
+RECOVERY_ELIGIBILITY_ASSESSED → RECOVERY_APPROVED → RECOVERY_STARTED
+→ RECOVERY_EXECUTED → RECOVERY_VERIFIED   (then the transaction's one real hop: FAILED → LIMIT_RELEASED)
+                             ↘ RECOVERY_BLOCKED     (blocked: reason code)
+                             ↘ RECOVERY_FAILED      (execution failure: safe state)
+```
+
+Eligibility assessments and approvals are **observations, never transitions** —
+the state machine is only ever moved by the executor's explicit, validated
+`LIMIT_RELEASED` hop.
+
+### 18.7 Failure handling
+
+Every failure path lands in a **safe state**: policy refusal → `BLOCKED` row +
+`RECOVERY_BLOCKED` twin event; gate block → same, with the reason code;
+execution failure → `FAILED` row + `RECOVERY_FAILED` (retryable up to 3);
+verification failure → never `VERIFIED`, never `LIMIT_RELEASED`. The system's
+standing rule: **when uncertain, DO NOT RECOVER.**
+
+### 18.8 Manual convergence
+
+Support keeps the Stage 3 flow: `POST /recovery/release-limit` still works on
+`MANUAL_REVIEW` outcomes and **replays idempotently** against the same ledger.
+What support **cannot** do is bypass the safety gate — no force-release
+endpoint exists. That is a deliberate, documented decision: a human override
+that skips fresh-evidence checks would reintroduce exactly the
+settlement-race / double-deduction classes Stage 8 exists to prevent.
+
+### 18.9 APIs
+
+| Endpoint | Roles | Purpose |
+|---|---|---|
+| `POST /api/v1/transactions/{id}/recovery/process` | `SYSTEM`, `ADMIN` | Full pipeline, commit ONCE. Response `decision`: `AUTO_RECOVERED` \| `RECOVERY_BLOCKED` \| `MANUAL_REVIEW_QUEUED` \| `ALREADY_RECOVERED`, plus `action`, `status`, `recovery_id`, `provider_reference`, `reason`, `simulated`. |
+| `POST /api/v1/transactions/{id}/recovery/evaluate` | `SYSTEM`, `ADMIN`, `SUPPORT` | Policy + safety only — no writes, no provider call ("why wasn't this auto-recovered?"). |
+| `GET /api/v1/transactions/{id}/recovery` | `SYSTEM`, `ADMIN`, `SUPPORT` | Latest recovery action row, read-only evidence. |
+
+### 18.10 End-to-end verification script
+
+`scripts/stage8_e2e.py` drives the **live API** (create → ingest payment
+events → POST risk-assessment → POST recovery/process → assertions on
+`GET /recovery` + `GET /timeline`):
+
+```bash
+uvicorn api.main:app --reload          # terminal 1
+py -m scripts.stage8_e2e               # terminal 2 (defaults below)
+py -m scripts.stage8_e2e --api-url http://127.0.0.1:8000 --seed 42 --verbose
+py -m scripts.stage8_e2e --demo        # S1 only, narrated step by step
+```
+
+| Scenario | Evidence | Expected |
+|---|---|---|
+| S1 genuine failure | debit OK, merchant confirmation times out | `AUTO_RECOVERED`, `RELEASE_LIMIT`, `VERIFIED`, simulated, sandbox reference, twin lifecycle present, tx `LIMIT_RELEASED` |
+| S2 double deduction | customer debited twice, gateway times out | `RECOVERY_BLOCKED`, `NO_ACTION` — provider never called (no reference), `DOUBLE_DEDUCTION` |
+| S3 success | all 7 happy-path events | `RECOVERY_BLOCKED`, `ALREADY_SUCCESS` |
+| S4 incomplete | a single debit confirmation | `RECOVERY_BLOCKED`, `INSUFFICIENT_EVIDENCE` |
+| S5 race (spec 43) | genuine failure, then a `SETTLEMENT_CONFIRMED` lands | `RECOVERY_BLOCKED` (`NEW_SUCCESSFUL_SETTLEMENT` or `ALREADY_SUCCESS`), **never** auto-recovered, tx never released |
+| S6 duplicate | `process` called twice | 1st `AUTO_RECOVERED`, 2nd `ALREADY_RECOVERED`, same `recovery_id`, released exactly once |
+| S7/S8 provider failure / verifier | failure hook is server-side — not injectable via the API | safe-state contract asserted live; full paths covered by `tests/test_recovery_executor.py` + `tests/test_recovery_verifier.py` |
+
+### 18.11 Dashboard
+
+The Stage 5 dashboard's recovery views surface the sandbox metrics (recovery
+rows with `simulated: true`, blocked reasons, released amounts) read-only —
+consistent with the no-human-release-click design above.
+
+### 18.12 Key Stage 8 files
+
+| Path | Purpose |
+|---|---|
+| `api/services/payment_provider.py` | `MockPaymentProvider` + in-memory sandbox ledger (idempotent) |
+| `api/services/recovery_safety.py` | Fresh-evidence safety gate |
+| `api/services/recovery_decision_policy.py` | Deterministic eligibility policy |
+| `api/services/recovery_executor.py` | Idempotent executor (gate → provider → verification, bounded retries) |
+| `api/services/recovery_verifier.py` | Post-execution verification (6 checks) |
+| `api/services/autonomous_recovery.py` | Orchestration: assessment → policy → gate → execute, one commit |
+| `api/routes/autonomous_recovery.py` | `process` / `evaluate` / `GET recovery` endpoints |
+| `scripts/stage8_e2e.py` | Live-API E2E verification (18.10) |
