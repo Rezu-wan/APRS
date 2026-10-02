@@ -10,6 +10,7 @@ idempotency; the twin is never appended twice for the same conclusion).
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -21,6 +22,12 @@ from api.core.security import AuthContext, can_access_transaction, require_roles
 from api.db.database import get_db
 from api.schemas.reconstruction import ReconstructionResult
 from api.services.event_reconstruction import reconstruct_from_events
+from api.services.metrics import (
+    METRICS_RECONSTRUCTION_LATENCY,
+    METRICS_RECONSTRUCTION_TOTAL,
+    record_counter,
+    record_latency,
+)
 from api.services.payment_event_service import (
     get_payment_events,
     record_root_cause_event,
@@ -58,8 +65,13 @@ def get_reconstruction(
         raise NotFoundError(f"transaction {transaction_id} not found")
 
     events = get_payment_events(db, transaction_id)
+    _t0 = time.perf_counter()
     result = reconstruct_from_events(
         transaction_id, events, datetime.now(timezone.utc)
+    )
+    record_counter(METRICS_RECONSTRUCTION_TOTAL)  # Stage 11G
+    record_latency(
+        METRICS_RECONSTRUCTION_LATENCY, (time.perf_counter() - _t0) * 1000
     )
 
     twin_payload = {

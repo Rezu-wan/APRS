@@ -30,6 +30,10 @@ from api.core.security import AuthContext, require_roles
 from api.db.database import get_db
 from api.schemas.risk_assessment import RiskAssessment
 from api.services.ml_service import get_ml_service
+from api.services.metrics import (
+    METRICS_RISK_LATENCY,
+    record_latency,
+)
 from api.services.risk_engine import (
     assessment_from_record,
     get_latest_record,
@@ -94,6 +98,7 @@ def create_risk_assessment(
         db.commit()
 
     latency_ms = round((time.perf_counter() - started) * 1000, 1)
+    record_latency(METRICS_RISK_LATENCY, latency_ms)  # Stage 11G (HTTP-facing latency; the counter is service-side)
     logger.info(
         "risk assessment completed: tx=%s anomaly_type=%s risk_level=%s "
         "reused=%s latency_ms=%.1f",

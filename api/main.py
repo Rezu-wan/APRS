@@ -31,11 +31,14 @@ from api.db.database import engine
 from api.routes import (
     auth,
     autonomous_recovery,
+    behavioral,
     demo,
     explanations,
+    metrics,
     payment_events,
     recovery,
     reconstruction,
+    relationship,
     risk_assessment,
     sandbox,
     stats,
@@ -64,8 +67,26 @@ async def lifespan(app: FastAPI):
     from api.services.payment_provider import restore_sandbox_ledger  # Stage 9
 
     restore_sandbox_ledger()
+
+    # Stage 11A: event bus — a DEBUG logging consumer proves the wiring
+    # without spamming demo logs; closed on shutdown.
+    from api.services.eventbus import EventEnvelope, get_event_bus
+
+    bus = get_event_bus()
+
+    def _log_consumer(envelope: EventEnvelope) -> None:
+        logger.debug(
+            "event %s tx=%s id=%s",
+            envelope.event_type,
+            envelope.transaction_id,
+            envelope.event_id,
+        )
+
+    bus.subscribe(_log_consumer, name="lifespan-logger")
+
     logger.info("startup complete (env=%s, roles=%s)", settings.environment, list(ROLES))
     yield
+    bus.close()
     logger.info("shutdown")
 
 
@@ -100,6 +121,9 @@ app.include_router(autonomous_recovery.router)
 app.include_router(sandbox.sandbox_router)
 app.include_router(sandbox.audit_router)
 app.include_router(demo.router)
+app.include_router(behavioral.router)
+app.include_router(relationship.router)
+app.include_router(metrics.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware
