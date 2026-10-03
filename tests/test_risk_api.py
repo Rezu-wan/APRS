@@ -219,9 +219,10 @@ def test_get_risk_assessment_serves_dataset_evidence_without_source(client):
     resp = client.get(RISK_URL.format(tid=tid), headers=SUPPORT_KEY)
     assert resp.status_code == 200
     evidence = resp.json()["assessment"]["evidence"]
+    # the read path stamps the honest provenance for sourceless dataset rows
     assert evidence == [
         {"code": "SCENARIO", "description": "Scenario failure injected for DEMO run",
-         "source": None, "severity": "LOW"}
+         "source": "DATASET", "severity": "LOW"}
     ]
 
 
