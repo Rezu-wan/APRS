@@ -18,11 +18,18 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       {/* Router must wrap AuthProvider: AuthContext uses useNavigate for
           logout/session-expiry redirects and would throw outside a Router. */}
-      {/* v7_relativeSplatPath is a safe opt-in; v7_startTransition is left
-          OFF deliberately — it defers route updates into transitions, which
-          breaks the synchronous act()-based test harness (96 tests). The
-          remaining dev-only warning is harmless. */}
-      <BrowserRouter future={{ v7_relativeSplatPath: true }}>
+      {/* Future flags silence the v6 deprecation warnings. v7_startTransition
+          is enabled for the real app but NOT under the vitest runner
+          (MODE === "test"): transitions defer route updates outside act(),
+          which breaks the synchronous test harness (96 failures). The tests
+          cover the router's routing behavior; the flag changes React's
+          update scheduling inside react-router only. */}
+      <BrowserRouter
+        future={{
+          v7_relativeSplatPath: true,
+          ...(import.meta.env.MODE !== "test" ? { v7_startTransition: true } : {}),
+        }}
+      >
         <AuthProvider>
           <AppRoutes />
         </AuthProvider>
