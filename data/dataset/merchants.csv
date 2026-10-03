@@ -1,0 +1,41 @@
+merchant_id,name,category,country,risk_tier,traffic_weight,created_at
+MER-0001,Dhaka Fresh Mart,grocery,BD,LOW,90,2023-05-08 00:00:00+00:00
+MER-0002,GreenLine Utilities,utility,BD,LOW,70,2024-08-26 00:00:00+00:00
+MER-0003,PadmaFoods Online,food,BD,LOW,85,2024-08-02 00:00:00+00:00
+MER-0004,BongoBazar,ecommerce,BD,LOW,88,2024-06-10 00:00:00+00:00
+MER-0005,Meghna Telecom,telecom,BD,LOW,95,2023-06-04 00:00:00+00:00
+MER-0006,Rideshare Nikunj,transport,BD,LOW,80,2024-03-17 00:00:00+00:00
+MER-0007,CityCare Hospital,health,BD,LOW,25,2023-08-12 00:00:00+00:00
+MER-0008,EduPath Academy,education,BD,LOW,30,2024-05-08 00:00:00+00:00
+MER-0009,CinePlex Star,entertainment,BD,LOW,45,2023-11-22 00:00:00+00:00
+MER-0010,KartPay Digital,ecommerce,BD,LOW,60,2023-05-22 00:00:00+00:00
+MER-0011,Shopnodhara Fashion,retail,BD,LOW,50,2024-03-07 00:00:00+00:00
+MER-0012,QuickBite Delivery,food,BD,LOW,75,2025-03-11 00:00:00+00:00
+MER-0013,Jamuna Electronics,electronics,BD,LOW,35,2024-12-26 00:00:00+00:00
+MER-0014,Agni Gas & Fuel,utility,BD,LOW,40,2023-06-04 00:00:00+00:00
+MER-0015,MetroMart Superstore,grocery,BD,LOW,65,2023-05-20 00:00:00+00:00
+MER-0016,BDOptics,retail,BD,LOW,15,2023-04-24 00:00:00+00:00
+MER-0017,SurmaPharma,health,BD,LOW,30,2024-01-05 00:00:00+00:00
+MER-0018,Rupayan Property,housing,BD,MEDIUM,8,2025-01-07 00:00:00+00:00
+MER-0019,FalconAir BD,travel,BD,MEDIUM,12,2025-01-03 00:00:00+00:00
+MER-0020,Bengal Tours,travel,BD,LOW,10,2024-03-12 00:00:00+00:00
+MER-0021,NagadX Reload,telecom,BD,MEDIUM,55,2023-06-01 00:00:00+00:00
+MER-0022,TurboGame Zone,gaming,BD,HIGH,6,2024-09-03 00:00:00+00:00
+MER-0023,CoinBridge Exchange,crypto,XX,HIGH,3,2024-12-20 00:00:00+00:00
+MER-0024,LuckyWin Casino,gaming,XX,HIGH,2,2023-10-15 00:00:00+00:00
+MER-0025,GlobalSoft Licenses,software,US,LOW,18,2023-05-26 00:00:00+00:00
+MER-0026,NorthStream Media,entertainment,US,LOW,22,2024-08-06 00:00:00+00:00
+MER-0027,VegaCloud Hosting,software,US,LOW,12,2024-01-09 00:00:00+00:00
+MER-0028,MapleBooks Store,ecommerce,US,LOW,14,2025-02-11 00:00:00+00:00
+MER-0029,LibertyGadgets,electronics,US,MEDIUM,9,2023-10-25 00:00:00+00:00
+MER-0030,SunriseFare Travel,travel,US,MEDIUM,7,2024-03-31 00:00:00+00:00
+MER-0031,ThamesEnergy UK,utility,GB,LOW,10,2025-02-24 00:00:00+00:00
+MER-0032,CrownMarket UK,grocery,GB,LOW,12,2023-11-30 00:00:00+00:00
+MER-0033,KL Tech Bazaar,electronics,MY,LOW,11,2024-12-29 00:00:00+00:00
+MER-0034,TropicFare MY,travel,MY,LOW,8,2023-05-25 00:00:00+00:00
+MER-0035,LionCity Eats,food,SG,LOW,9,2024-03-31 00:00:00+00:00
+MER-0036,MerlionTelco,telecom,SG,LOW,10,2024-07-29 00:00:00+00:00
+MER-0037,DelhiMart India,ecommerce,IN,LOW,12,2024-06-12 00:00:00+00:00
+MER-0038,BharatBill Pay,utility,IN,LOW,14,2025-01-09 00:00:00+00:00
+MER-0039,GulfMart AE,retail,AE,MEDIUM,8,2023-09-18 00:00:00+00:00
+MER-0040,DuneGold Traders,luxury,AE,HIGH,4,2024-07-25 00:00:00+00:00

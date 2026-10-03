@@ -1,0 +1,31 @@
+{
+  "seed": 42,
+  "scale": 1.0,
+  "generated_at": "2026-10-03 11:25:12+00:00",
+  "window": {
+    "start": "2025-10-01 00:00:00+00:00",
+    "end": "2026-10-01 00:00:00+00:00"
+  },
+  "counts": {
+    "customers.csv": 600,
+    "accounts.csv": 887,
+    "merchants.csv": 40,
+    "devices.csv": 718,
+    "transactions.csv": 10506,
+    "digital_twin_events.csv": 39748,
+    "payment_events.csv": 66928,
+    "risk_assessments.csv": 10506,
+    "model_assessments.csv": 11867,
+    "behavior_signals.csv": 6000,
+    "relationship_edges.csv": 69576,
+    "recovery_cases.csv": 1142
+  },
+  "synthetic": true,
+  "note": "100% synthetic data \u2014 no real persons, accounts, or payments.",
+  "vocabulary_alignment": {
+    "states": "api/core/state_machine.py",
+    "payment_event_types": 14,
+    "anomaly_taxonomy": "api/services/anomaly_rules.py (9 values)",
+    "scenarios": "api/services/demo_scenarios.py S1-S6"
+  }
+}
