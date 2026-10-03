@@ -77,11 +77,10 @@ function Hero() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-            AI Transaction Digital Twin
+            APRS
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            Autonomous recovery for failed or stalled payment transactions — with evidence, safety
-            gates and post-execution verification.
+            Autonomous Payment Recovery System — autonomous recovery for failed or stalled payment transactions with evidence, safety gates and post-execution verification.
           </p>
         </div>
         <span className="inline-flex shrink-0 items-center self-start rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-amber-800 ring-1 ring-inset ring-amber-600/20">
