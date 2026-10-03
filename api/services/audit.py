@@ -44,6 +44,7 @@ AUDIT_CHAOS_TEST = "CHAOS_TEST"                      # chaos scenario executed (
 AUDIT_TEMPORAL_QUERY = "TEMPORAL_QUERY"              # state-at-timestamp historical query (staff)
 AUDIT_GRAPH_ANALYSIS = "GRAPH_ANALYSIS"              # relationship analysis access (staff)
 AUDIT_MODEL_SIGNAL = "MODEL_SIGNAL"                  # behavioral signal access (staff)
+AUDIT_CUSTOMER_REPORT = "CUSTOMER_REPORT"            # customer filed a problem report (evidence only)
 
 _RESULT_ALLOWED = "ALLOWED"
 _RESULT_DENIED = "DENIED"

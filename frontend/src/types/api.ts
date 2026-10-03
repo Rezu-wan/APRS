@@ -18,6 +18,8 @@ export type TransactionState =
 export interface MeResponse {
   role: Role;
   key_name: string;
+  /** Stage 9: bound customer identity for CUSTOMER keys; null/absent for staff. */
+  customer_id?: string | null;
 }
 
 export interface Transaction {
@@ -34,6 +36,14 @@ export interface Transaction {
   account_age_days: number;
   failure_reason: string | null;
   current_state: TransactionState;
+  /** descriptive payment attributes (dataset-loaded; absent on old rows) */
+  transaction_type?: string | null;
+  channel?: string | null;
+  direction?: string | null;
+  country?: string | null;
+  /** merchant-catalog resolution (null when the id has no catalog row) */
+  merchant_name?: string | null;
+  merchant_category?: string | null;
   failure_prediction: string | null;
   failure_probability: number | null;
   risk_score: number | null;
@@ -41,6 +51,71 @@ export interface Transaction {
   safe_to_release: boolean | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CustomerProfile {
+  customer_id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  country: string;
+  status: string;
+  segment: string;
+  risk_profile: string;
+  archetype: string | null;
+  member_since: string;
+}
+
+export interface TransactionListResponse {
+  items: Transaction[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** GET /transactions/summary — role-scoped aggregates (customer dashboard). */
+export interface TransactionsSummary {
+  total: number;
+  by_state: Record<string, number>;
+  amounts_by_currency: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
+// Customer problem reports (Stage: customer-reports) — evidence only.
+// ---------------------------------------------------------------------------
+
+export type ProblemType =
+  | "DOUBLE_CHARGED"
+  | "PAYMENT_FAILED"
+  | "MONEY_NOT_RECEIVED"
+  | "UNAUTHORIZED"
+  | "OTHER";
+
+export type ProblemStage =
+  | "CARD_DEBIT"
+  | "GATEWAY"
+  | "MERCHANT_CONFIRMATION"
+  | "SETTLEMENT"
+  | "NOT_SURE";
+
+export type ReportStatus = "OPEN" | "UNDER_REVIEW" | "RESOLVED" | "REJECTED";
+
+export interface CustomerReport {
+  report_id: string;
+  transaction_id: string;
+  customer_id: string;
+  problem_type: string;
+  stage: string;
+  description: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerReportFileResponse {
+  report: CustomerReport;
+  already_reported: boolean;
+  digital_twin_event_recorded: boolean;
 }
 
 export interface TimelineEvent {
@@ -120,6 +195,7 @@ export const roleSchema = z.enum(["SYSTEM", "ADMIN", "SUPPORT", "CUSTOMER"]);
 export const meResponseSchema = z.object({
   role: roleSchema,
   key_name: z.string(),
+  customer_id: z.string().nullable().optional(),
 });
 
 export const transactionStateSchema = z.enum([
@@ -151,6 +227,12 @@ export const transactionSchema = z.object({
   account_age_days: z.number(),
   failure_reason: z.string().nullable(),
   current_state: transactionStateSchema,
+  transaction_type: z.string().nullable().optional(),
+  channel: z.string().nullable().optional(),
+  direction: z.string().nullable().optional(),
+  country: z.string().nullable().optional(),
+  merchant_name: z.string().nullable().optional(),
+  merchant_category: z.string().nullable().optional(),
   failure_prediction: z.string().nullable(),
   failure_probability: nullableNumber,
   risk_score: nullableNumber,
@@ -172,6 +254,53 @@ export const timelineEventSchema = z.object({
   safe_to_release: z.boolean().nullable(),
   reason: z.string().nullable(),
   metadata: z.record(z.unknown()).nullable(),
+});
+
+export const transactionListResponseSchema = z.object({
+  items: z.array(transactionSchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+
+export const transactionsSummarySchema = z.object({
+  total: z.number(),
+  by_state: z.record(z.number()),
+  amounts_by_currency: z.record(z.string()),
+});
+
+export const problemTypeSchema = z.enum([
+  "DOUBLE_CHARGED",
+  "PAYMENT_FAILED",
+  "MONEY_NOT_RECEIVED",
+  "UNAUTHORIZED",
+  "OTHER",
+]);
+
+export const problemStageSchema = z.enum([
+  "CARD_DEBIT",
+  "GATEWAY",
+  "MERCHANT_CONFIRMATION",
+  "SETTLEMENT",
+  "NOT_SURE",
+]);
+
+export const customerReportSchema = z.object({
+  report_id: z.string(),
+  transaction_id: z.string(),
+  customer_id: z.string(),
+  problem_type: z.string(),
+  stage: z.string(),
+  description: z.string(),
+  status: z.string(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export const customerReportFileResponseSchema = z.object({
+  report: customerReportSchema,
+  already_reported: z.boolean(),
+  digital_twin_event_recorded: z.boolean(),
 });
 
 export const timelineResponseSchema = z.object({
@@ -333,7 +462,9 @@ export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN";
 export interface EvidenceItem {
   code: string;
   description: string;
-  source: string;
+  // Dataset-loaded evidence carries no provenance (CSV has no source column);
+  // live-pipeline evidence always sets it.
+  source: string | null;
   severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 }
 
@@ -373,7 +504,7 @@ const severitySchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
 export const evidenceItemSchema = z.object({
   code: z.string(),
   description: z.string(),
-  source: z.string(),
+  source: z.string().nullable(),
   severity: severitySchema,
 });
 
@@ -676,4 +807,61 @@ const RECOVERY_ACTION_LABELS: Record<RecoveryAction, string> = {
 
 export function humanizeRecoveryAction(action: RecoveryAction | string): string {
   return RECOVERY_ACTION_LABELS[action as RecoveryAction] ?? action;
+}
+
+const PROBLEM_TYPE_LABELS: Record<ProblemType, string> = {
+  DOUBLE_CHARGED: "Charged more than once",
+  PAYMENT_FAILED: "Payment failed",
+  MONEY_NOT_RECEIVED: "Money not received",
+  UNAUTHORIZED: "Transaction not recognised",
+  OTHER: "Other problem",
+};
+
+export function humanizeProblemType(type: string): string {
+  return PROBLEM_TYPE_LABELS[type as ProblemType] ?? type;
+}
+
+const PROBLEM_STAGE_LABELS: Record<ProblemStage, string> = {
+  CARD_DEBIT: "Bank debit",
+  GATEWAY: "Gateway",
+  MERCHANT_CONFIRMATION: "Merchant confirmation",
+  SETTLEMENT: "Settlement",
+  NOT_SURE: "Not sure",
+};
+
+export function humanizeProblemStage(stage: string): string {
+  return PROBLEM_STAGE_LABELS[stage as ProblemStage] ?? stage;
+}
+
+const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
+  OPEN: "Open",
+  UNDER_REVIEW: "Under review",
+  RESOLVED: "Resolved",
+  REJECTED: "Rejected",
+};
+
+export function humanizeReportStatus(status: string): string {
+  return REPORT_STATUS_LABELS[status as ReportStatus] ?? status;
+}
+
+export const customerProfileSchema = z.object({
+  customer_id: z.string(),
+  full_name: z.string(),
+  email: z.string(),
+  phone: z.string(),
+  country: z.string(),
+  status: z.string(),
+  segment: z.string(),
+  risk_profile: z.string(),
+  archetype: z.string().nullable(),
+  member_since: z.string(),
+});
+
+/** "mobile_app" -> "Mobile app" — channel/type/archetype words arrive
+ * snake_cased from the dataset. */
+export function humanizeSnakeWord(value: string): string {
+  return value
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }

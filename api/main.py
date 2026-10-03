@@ -33,6 +33,8 @@ from api.routes import (
     autonomous_recovery,
     behavioral,
     chaos,
+    customer_reports,
+    customers,
     demo,
     explanations,
     metrics,
@@ -113,6 +115,8 @@ app = FastAPI(
 
 app.include_router(transactions.router)
 app.include_router(transactions.ingest_router)
+app.include_router(customer_reports.router)
+app.include_router(customers.router)
 app.include_router(recovery.router)
 app.include_router(explanations.router)
 app.include_router(auth.router)
