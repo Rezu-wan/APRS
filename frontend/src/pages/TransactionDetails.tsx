@@ -15,6 +15,9 @@ import { SandboxLedgerCard } from "../components/sandbox/SandboxLedgerCard";
 import { ReconstructionPanel } from "../components/reconstruction/ReconstructionPanel";
 import { AutonomousRecoveryPanel } from "../components/recovery/AutonomousRecoveryPanel";
 import { RiskAssessmentPanel } from "../components/risk/RiskAssessmentPanel";
+import { TemporalPanel } from "../components/stage11/TemporalPanel";
+import { BehavioralSignalsPanel } from "../components/stage11/BehavioralSignalsPanel";
+import { RelationshipsPanel } from "../components/stage11/RelationshipsPanel";
 import { Timeline } from "../components/timeline/Timeline";
 import { ExplanationCard } from "../components/explanation/ExplanationCard";
 
@@ -186,6 +189,12 @@ export default function TransactionDetails() {
 
       {/* Hybrid risk assessment — all roles; CUSTOMER gets a muted 403 line */}
       <RiskAssessmentPanel transactionId={transaction.transaction_id} />
+
+      {/* Stage 11 intelligence — temporal twin, behavioral + relationship signals.
+          All staff-facing reads; CUSTOMER sees muted 403 lines. */}
+      <TemporalPanel transactionId={transaction.transaction_id} />
+      <BehavioralSignalsPanel transactionId={transaction.transaction_id} />
+      <RelationshipsPanel transactionId={transaction.transaction_id} />
 
       {/* Explanation — all roles; the card locks CUSTOMER to Bangla + customer audience */}
       <ExplanationCard transactionId={transaction.transaction_id} />
