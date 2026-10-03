@@ -10,19 +10,28 @@ export interface Session {
 
 const SESSION_KEY = "prdt.auth";
 
+interface PersistedSession {
+  role: Role;
+  keyName: string;
+  customerId?: string | null;
+}
+
+let memoryApiKey: string | null = null;
+
 export function getSession(): Session | null {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Session>;
-    if (typeof parsed.apiKey !== "string" || parsed.apiKey.length === 0) {
-      return null;
-    }
+    const parsed = JSON.parse(raw) as Partial<PersistedSession>;
     if (typeof parsed.role !== "string" || typeof parsed.keyName !== "string") {
       return null;
     }
+    if (!memoryApiKey) {
+      sessionStorage.removeItem(SESSION_KEY);
+      return null;
+    }
     return {
-      apiKey: parsed.apiKey,
+      apiKey: memoryApiKey,
       role: parsed.role as Role,
       keyName: parsed.keyName,
       customerId: typeof parsed.customerId === "string" ? parsed.customerId : null,
@@ -34,9 +43,18 @@ export function getSession(): Session | null {
 }
 
 export function setSession(session: Session): void {
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  memoryApiKey = session.apiKey;
+  sessionStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({
+      role: session.role,
+      keyName: session.keyName,
+      customerId: session.customerId ?? null,
+    } satisfies PersistedSession)
+  );
 }
 
 export function clearSession(): void {
+  memoryApiKey = null;
   sessionStorage.removeItem(SESSION_KEY);
 }

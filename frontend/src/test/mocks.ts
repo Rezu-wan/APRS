@@ -1,9 +1,22 @@
-// vi.mock factories for the five API modules.
+// vi.mock factories for the six API modules.
 // IMPORTANT: import this module (or a module that imports it) as the FIRST
 // import in a test file so the mocks are registered before pages load.
 import { vi } from "vitest";
 import { ApiError } from "../api/client";
 import type { ExplanationResponse, MeResponse, RecoveryDecisionResponse, RecoveryOutcome, RecoveryRecord, ReconstructionResult, RiskAssessmentResponse, StatsSummary, TimelineResponse, Transaction } from "../types/api";
+import type {
+  CustomerProfileResponse,
+  CustomerSearchResponse,
+  StreamTicketResponse,
+  SupportCase,
+  SupportCaseCreateInput,
+  SupportCaseListResponse,
+  SupportCaseQuery,
+  SupportCaseUpdateInput,
+  SupportOverviewResponse,
+  SupportTransactionQuery,
+  TransactionListResponse,
+} from "../api/support";
 
 vi.mock("../api/auth", () => ({
   getMe: vi.fn(),
@@ -69,6 +82,24 @@ vi.mock("../api/stage11", async (importOriginal) => {
   };
 });
 
+vi.mock("../api/support", async (importOriginal) => {
+  // Keep the display helpers (humanizers, CASE_NEXT_STATUSES,
+  // OPEN_CASE_STATUSES, formatMoney, formatTimestamp, supportStreamUrl) real —
+  // only the network functions are mocked.
+  const actual = await importOriginal<typeof import("../api/support")>();
+  return {
+    ...actual,
+    getSupportOverview: vi.fn(),
+    searchSupportCustomers: vi.fn(),
+    getSupportCustomerProfile: vi.fn(),
+    getSupportTransactions: vi.fn(),
+    getSupportCases: vi.fn(),
+    createSupportCase: vi.fn(),
+    updateSupportCase: vi.fn(),
+    requestStreamTicket: vi.fn(),
+  };
+});
+
 // The vi.mock calls above are hoisted before these dynamic imports, so each
 // awaited module is the mocked one — the exported handles ARE the mock fns.
 const authMod = await import("../api/auth");
@@ -79,6 +110,7 @@ const recoveryMod = await import("../api/recovery");
 const explanationsMod = await import("../api/explanations");
 const demoMod = await import("../api/demo");
 const stage11Mod = await import("../api/stage11");
+const supportMod = await import("../api/support");
 
 export const mockGetMe = vi.mocked(authMod.getMe) as unknown as {
   (apiKey?: string): Promise<MeResponse>;
@@ -399,6 +431,93 @@ export const mockRunChaosScenario = vi.mocked(
 };
 
 // ---------------------------------------------------------------------------
+// Stage 12 support-workspace mocks (src/api/support.ts)
+// ---------------------------------------------------------------------------
+
+export const mockGetSupportOverview = vi.mocked(supportMod.getSupportOverview) as unknown as {
+  (): Promise<SupportOverviewResponse>;
+  mockResolvedValue: (v: SupportOverviewResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<SupportOverviewResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockSearchSupportCustomers = vi.mocked(
+  supportMod.searchSupportCustomers
+) as unknown as {
+  (query: string, limit?: number): Promise<CustomerSearchResponse>;
+  mockResolvedValue: (v: CustomerSearchResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<CustomerSearchResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetSupportCustomerProfile = vi.mocked(
+  supportMod.getSupportCustomerProfile
+) as unknown as {
+  (customerId: string): Promise<CustomerProfileResponse>;
+  mockResolvedValue: (v: CustomerProfileResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<CustomerProfileResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetSupportTransactions = vi.mocked(
+  supportMod.getSupportTransactions
+) as unknown as {
+  (query?: SupportTransactionQuery): Promise<TransactionListResponse>;
+  mockResolvedValue: (v: TransactionListResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<TransactionListResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetSupportCases = vi.mocked(supportMod.getSupportCases) as unknown as {
+  (query?: SupportCaseQuery): Promise<SupportCaseListResponse>;
+  mockResolvedValue: (v: SupportCaseListResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<SupportCaseListResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockCreateSupportCase = vi.mocked(supportMod.createSupportCase) as unknown as {
+  (input: SupportCaseCreateInput): Promise<SupportCase>;
+  mockResolvedValue: (v: SupportCase) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockUpdateSupportCase = vi.mocked(supportMod.updateSupportCase) as unknown as {
+  (caseId: string, input: SupportCaseUpdateInput): Promise<SupportCase>;
+  mockResolvedValue: (v: SupportCase) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockRequestStreamTicket = vi.mocked(supportMod.requestStreamTicket) as unknown as {
+  (): Promise<StreamTicketResponse>;
+  mockResolvedValue: (v: StreamTicketResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -510,6 +629,54 @@ function defaultStaffForbidden(): Promise<never> {
   return Promise.reject(new ApiError(403, "INSUFFICIENT_PERMISSIONS", "forbidden"));
 }
 
+// Stage 12 support defaults — honest empty workspace: zeroed queue, no
+// results, no cases. Tests opt INTO data via factories.
+function defaultSupportOverview(): Promise<SupportOverviewResponse> {
+  return Promise.resolve({
+    cases_by_status: {
+      open: 0,
+      in_progress: 0,
+      waiting_for_customer: 0,
+      escalated: 0,
+      resolved: 0,
+      closed: 0,
+    },
+    needs_attention: [],
+    recent_activity: [],
+    generated_at: "2026-10-02T10:00:00Z",
+  });
+}
+
+function defaultSupportSearch(): Promise<CustomerSearchResponse> {
+  return Promise.resolve({ query: "", results: [], total: 0 });
+}
+
+function defaultSupportProfile(): Promise<CustomerProfileResponse> {
+  return Promise.reject(new ApiError(404, "NOT_FOUND", "no such customer"));
+}
+
+function defaultSupportTransactions(): Promise<TransactionListResponse> {
+  return Promise.resolve({ transactions: [], total: 0, limit: 25, offset: 0 });
+}
+
+function defaultSupportCases(): Promise<SupportCaseListResponse> {
+  return Promise.resolve({ cases: [], total: 0 });
+}
+
+function defaultCreateSupportCase(): Promise<SupportCase> {
+  return Promise.reject(new ApiError(500, "UNKNOWN", "createSupportCase not stubbed"));
+}
+
+function defaultUpdateSupportCase(): Promise<SupportCase> {
+  return Promise.reject(new ApiError(500, "UNKNOWN", "updateSupportCase not stubbed"));
+}
+
+// No EventSource in jsdom: rejecting the ticket with 403 makes
+// useSupportStream stop honestly as "error" instead of retry-looping.
+function defaultRequestStreamTicket(): Promise<StreamTicketResponse> {
+  return Promise.reject(new ApiError(403, "INSUFFICIENT_PERMISSIONS", "forbidden"));
+}
+
 /** A promise that never settles — used to hold requests in-flight. */
 export function neverPromise<T>(): Promise<T> {
   return new Promise<T>(() => {});
@@ -574,4 +741,20 @@ export function resetApiMocks(): void {
   mockRunChaosScenario.mockImplementation(
     () => Promise.reject(new ApiError(500, "UNKNOWN", "runChaosScenario not stubbed")) as never
   );
+  mockGetSupportOverview.mockReset();
+  mockGetSupportOverview.mockImplementation(defaultSupportOverview as never);
+  mockSearchSupportCustomers.mockReset();
+  mockSearchSupportCustomers.mockImplementation(defaultSupportSearch as never);
+  mockGetSupportCustomerProfile.mockReset();
+  mockGetSupportCustomerProfile.mockImplementation(defaultSupportProfile as never);
+  mockGetSupportTransactions.mockReset();
+  mockGetSupportTransactions.mockImplementation(defaultSupportTransactions as never);
+  mockGetSupportCases.mockReset();
+  mockGetSupportCases.mockImplementation(defaultSupportCases as never);
+  mockCreateSupportCase.mockReset();
+  mockCreateSupportCase.mockImplementation(defaultCreateSupportCase as never);
+  mockUpdateSupportCase.mockReset();
+  mockUpdateSupportCase.mockImplementation(defaultUpdateSupportCase as never);
+  mockRequestStreamTicket.mockReset();
+  mockRequestStreamTicket.mockImplementation(defaultRequestStreamTicket as never);
 }

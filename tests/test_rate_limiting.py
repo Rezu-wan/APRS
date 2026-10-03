@@ -69,6 +69,7 @@ class TestBucketSelection:
             "payment-events": 60,
             "auth": 60,
             "demo": 60,  # Stage 10: demo-control endpoints
+            "support": 240,  # Stage 12: support workspace (queue+search+SSE)
             "customer-reports": 20,  # customer problem reports (evidence only)
         }
         limits = {name: limit for name, _, limit in RATE_LIMITS}

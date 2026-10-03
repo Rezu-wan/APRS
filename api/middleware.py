@@ -65,6 +65,9 @@ RATE_LIMITS: list[tuple[str, tuple[str, ...], int]] = [
     ("auth", ("/auth/",), 60),
     ("demo", ("/demo/",), 60),
     ("customer-reports", ("/customer-report",), 20),
+    # support workspace: one agent session fires queue+search+profile reads
+    # plus an SSE ticket; generous but still per-key and bounded
+    ("support", ("/support/",), 240),
 ]
 DEFAULT_LIMIT = 120
 

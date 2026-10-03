@@ -53,6 +53,10 @@ class InMemoryEventBus(EventBus):
                 raise SubscriberError(f"subscriber already registered: {name}")
             self._subscribers[name] = (handler, types, OrderedDict())
 
+    def unsubscribe(self, name: str) -> bool:
+        with self._lock:
+            return self._subscribers.pop(name, None) is not None
+
     # -- publish -----------------------------------------------------------
 
     def publish(self, envelope: EventEnvelope) -> None:
