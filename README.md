@@ -269,7 +269,7 @@ Create a `.env` file in the project root with the following variables:
 | `API_KEY_SYSTEM` | `dev-system-key` | API key for SYSTEM role (full access) |
 | `API_KEY_ADMIN` | `dev-admin-key` | API key for ADMIN role (system control) |
 | `API_KEY_SUPPORT` | `dev-support-key` | API key for SUPPORT role (read + customer service) |
-| `API_KEY_CUSTOMER` | `dev-customer-key` | API key for CUSTOMER role (own data only) |
+| `API_KEY_CUSTOMER` | `dev-customer-jahin` | API key for CUSTOMER role (own data only) |
 | `CUSTOMER_API_KEYS` | *(empty)* | Customer key mappings: `key1:customer_id1,key2:customer_id2` |
 
 **Generate secure keys for production:**
