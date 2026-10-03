@@ -46,7 +46,6 @@ services:
   - type: web
     name: aprs-frontend
     env: static
-    region: singapore
     plan: free
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
