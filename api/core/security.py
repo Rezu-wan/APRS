@@ -19,6 +19,7 @@ when they do, they must be stored hashed (e.g. bcrypt) — never plaintext.
 from __future__ import annotations
 
 import hmac
+import re
 from dataclasses import dataclass
 
 from fastapi import Depends, Header
@@ -27,6 +28,21 @@ from api.core.config import DEV_KEY_WARNING, Settings, get_settings
 from api.core.exceptions import AuthenticationError, ForbiddenError
 
 ROLES = ("SYSTEM", "ADMIN", "SUPPORT", "CUSTOMER")
+
+# Dataset-customer dev keys: "dev-customer-CUST-000001" speaks as that dataset
+# customer without enumerating 600 pairs in CUSTOMER_API_KEYS. NON-PRODUCTION
+# ONLY — never resolves when environment == "production".
+_DATASET_CUSTOMER_KEY = re.compile(r"^dev-customer-(CUST-\d{6})$")
+
+
+def _dynamic_customer_auth(key: str, settings: Settings) -> AuthContext | None:
+    if settings.environment == "production":
+        return None
+    match = _DATASET_CUSTOMER_KEY.match(key)
+    if not match:
+        return None
+    customer_id = match.group(1)
+    return AuthContext("CUSTOMER", f"customer:{customer_id}", customer_id=customer_id)
 
 
 @dataclass(frozen=True)
@@ -74,6 +90,9 @@ def get_auth_context(
         # strings is not timing-safe
         if hmac.compare_digest(key, x_api_key):
             return ctx
+    dynamic = _dynamic_customer_auth(x_api_key, settings)
+    if dynamic is not None:
+        return dynamic
     _audit_auth_failure("invalid API key")  # Stage 9: audit trail
     raise AuthenticationError("invalid API key")
 
@@ -119,6 +138,9 @@ def key_name_from_request(request) -> str | None:
     for key, ctx in _key_map(get_settings()).items():
         if hmac.compare_digest(key, x_api_key):
             return ctx.key_name
+    dynamic = _dynamic_customer_auth(x_api_key, get_settings())
+    if dynamic is not None:
+        return dynamic.key_name
     return None
 
 

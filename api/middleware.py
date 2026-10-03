@@ -64,6 +64,7 @@ RATE_LIMITS: list[tuple[str, tuple[str, ...], int]] = [
     ("payment-events", ("/payment-events",), 60),
     ("auth", ("/auth/",), 60),
     ("demo", ("/demo/",), 60),
+    ("customer-reports", ("/customer-report",), 20),
 ]
 DEFAULT_LIMIT = 120
 

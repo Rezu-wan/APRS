@@ -1,15 +1,20 @@
 import { AlertTriangle } from "lucide-react";
-import type { Transaction } from "../../types/api";
+import { humanizeSnakeWord, type Transaction } from "../../types/api";
 
 /**
  * Format an amount string with the currency code, e.g. "৳ 1,250.00 BDT".
- * Falls back to the raw amount if Intl rejects the currency code.
+ * Falls back to the raw amount if Intl rejects the currency code. The code is
+ * only appended when Intl didn't already include it (for BDT, Intl renders
+ * "BDT 1,200.00" — appending would double the code).
  */
 export function formatAmount(amount: string, currency: string): string {
   const numeric = Number(amount);
   if (Number.isFinite(numeric)) {
     try {
-      return `${new Intl.NumberFormat("en", { style: "currency", currency }).format(numeric)} ${currency}`;
+      const formatted = new Intl.NumberFormat("en", { style: "currency", currency }).format(
+        numeric
+      );
+      return formatted.includes(currency) ? formatted : `${formatted} ${currency}`;
     } catch {
       // Invalid currency code — fall through to plain formatting.
       return `${new Intl.NumberFormat("en", { minimumFractionDigits: 2 }).format(numeric)} ${currency}`;
@@ -44,9 +49,28 @@ export function TransactionSummary({ transaction }: { transaction: Transaction }
         Transaction details
       </h2>
       <dl className="mt-3 divide-y divide-slate-100">
-        <DefinitionRow term="Merchant">{transaction.merchant_id}</DefinitionRow>
+        <DefinitionRow term="Merchant">
+          {transaction.merchant_name ?? (transaction.merchant_id || "—")}
+          {transaction.merchant_category ? (
+            <span className="text-slate-500"> · {transaction.merchant_category}</span>
+          ) : null}
+        </DefinitionRow>
         <DefinitionRow term="User">{transaction.user_id}</DefinitionRow>
         <DefinitionRow term="Timestamp">{formatDateTime(transaction.timestamp)}</DefinitionRow>
+        {transaction.transaction_type && (
+          <DefinitionRow term="Type">
+            {humanizeSnakeWord(transaction.transaction_type)}
+            {transaction.direction ? (
+              <span className="text-slate-500"> · {transaction.direction}</span>
+            ) : null}
+          </DefinitionRow>
+        )}
+        {transaction.channel && (
+          <DefinitionRow term="Channel">{humanizeSnakeWord(transaction.channel)}</DefinitionRow>
+        )}
+        {transaction.country && (
+          <DefinitionRow term="Country">{transaction.country}</DefinitionRow>
+        )}
         <DefinitionRow term="Failure reason">
           {transaction.failure_reason ? (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/20">

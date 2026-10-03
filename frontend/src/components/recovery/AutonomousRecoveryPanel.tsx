@@ -207,7 +207,7 @@ function RecoveryBody({ record }: { record: import("../../types/api").RecoveryRe
           <dd className="mt-0.5 text-sm font-medium text-slate-900">
             Simulated Sandbox
             <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-500">
-              {record.provider}
+              {record.provider ?? "not called"}
             </span>
           </dd>
         </div>

@@ -41,6 +41,29 @@ describe("AutonomousRecoveryPanel", () => {
     expect(screen.getByText(/Passed — released amount matches/)).toBeInTheDocument();
   });
 
+  // Regression (live-API contract): GET …/recovery serializes amounts as
+  // NUMBERS and provider is null when the provider was never called. The
+  // schema must parse that shape, not just the string-shaped fixture.
+  it("parses the live payload shape — numeric amounts and a null provider", async () => {
+    mockGetRecovery.mockResolvedValue(
+      makeRecovery({
+        status: "BLOCKED",
+        action: "NO_ACTION",
+        blocked_reason: "DOUBLE_DEDUCTION",
+        requested_amount: 1200.0 as unknown as string,
+        released_amount: null,
+        provider: null,
+        provider_reference: null,
+        verified_at: null,
+      }),
+    );
+    renderPanel();
+
+    expect(await screen.findByText("Recovery blocked")).toBeInTheDocument();
+    expect(screen.getByText(/1,200\.00/)).toBeInTheDocument();
+    expect(screen.getByText("not called")).toBeInTheDocument();
+  });
+
   it("renders a BLOCKED recovery with the blocked reason and no verification pass", async () => {
     mockGetRecovery.mockResolvedValue(
       makeRecovery({

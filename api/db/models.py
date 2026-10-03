@@ -20,6 +20,9 @@ recovery_actions     Stage 8 autonomous recovery action — SANDBOX execution
                      record; idempotency_key is the UNIQUE anchor
 security_audit /     Stage 9 security audit trail + write-through persistence
 sandbox_ledger_entries for the simulated sandbox ledger
+customers /          synthetic-dataset reference data (read-only): customer
+merchants            profiles and the merchant catalog the UI resolves ids
+                     against
 
 Timestamps are timezone-aware UTC. UUIDs are stored as 36-char strings for
 portability across PostgreSQL and SQLite.
@@ -41,6 +44,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -77,6 +81,13 @@ class Transaction(Base):
     previous_failures: Mapped[int] = mapped_column(Integer, default=0)
     account_age_days: Mapped[int] = mapped_column(Integer, default=0)
     failure_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # descriptive payment attributes (from the payment itself, not risk
+    # internals) — nullable: rows created before the dataset loader ran
+    transaction_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    channel: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
 
     current_state: Mapped[str] = mapped_column(
         String(32), default=TransactionState.INITIATED, index=True
@@ -300,7 +311,8 @@ class RecoveryActionRecord(Base):
     risk_assessment_id: Mapped[str | None] = mapped_column(String(36), index=True)
 
     decision_reason: Mapped[str] = mapped_column(Text)
-    blocked_reason: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    # 96: dataset blocked-reason sentences run to 68 chars
+    blocked_reason: Mapped[str | None] = mapped_column(String(96), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # sandbox provider ("mock") + its result/verification snapshots
@@ -373,3 +385,82 @@ class SandboxLedgerEntry(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+
+class CustomerReport(Base):
+    """Customer problem report — DECISION EVIDENCE ONLY, never an action.
+
+    A customer files a problem against one of THEIR transactions (double
+    charge, failed payment, …) plus where in the payment flow it happened.
+    The report never changes transaction state, never influences the
+    recovery policy by itself, and is never a decision: it is stored
+    evidence that staff can see (and that a later risk assessment may take
+    into account through the existing customer_reported_failure input, which
+    remains SYSTEM/ADMIN-only). One report per (transaction, customer):
+    re-filing replays the stored report (already_reported=true)."""
+
+    __tablename__ = "customer_reports"
+    __table_args__ = (
+        UniqueConstraint("transaction_id", "customer_id", name="uq_customer_report"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_id: Mapped[str] = mapped_column(
+        String(36), unique=True, default=new_event_id, index=True
+    )
+    transaction_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("transactions.transaction_id"), index=True
+    )
+    customer_id: Mapped[str] = mapped_column(String(64), index=True)
+
+    # closed vocabularies — validated at the schema layer
+    problem_type: Mapped[str] = mapped_column(String(32))
+    stage: Mapped[str] = mapped_column(String(32))
+    description: Mapped[str] = mapped_column(Text, default="")
+
+    # OPEN | UNDER_REVIEW | RESOLVED | REJECTED — moved by STAFF workflows
+    # only; filing always creates OPEN.
+    status: Mapped[str] = mapped_column(String(16), default="OPEN")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    transaction: Mapped[Transaction] = relationship()
+
+
+class Customer(Base):
+    """Customer identity/profile (synthetic dataset). Read-only reference data:
+    the API only ever serves a CUSTOMER their OWN row — auth still comes from
+    the X-API-Key binding, never from this table."""
+
+    __tablename__ = "customers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    customer_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    full_name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str] = mapped_column(String(160))
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    country: Mapped[str] = mapped_column(String(2), default="BD")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    segment: Mapped[str] = mapped_column(String(16), default="retail")
+    risk_profile: Mapped[str] = mapped_column(String(16), default="LOW")
+    archetype: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+
+class Merchant(Base):
+    """Merchant catalog (synthetic dataset) — resolution data so the UI can
+    show a merchant's name/category instead of the raw MER- id."""
+
+    __tablename__ = "merchants"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    merchant_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(40), default="")
+    country: Mapped[str] = mapped_column(String(2), default="BD")
+    risk_tier: Mapped[str] = mapped_column(String(16), default="LOW")

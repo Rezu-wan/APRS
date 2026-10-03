@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Payment Recovery Digital Twin: shield + recovery pulse -->
+  <path d="M16 2 L28 7 V15 C28 22.5 22.8 28.3 16 30 C9.2 28.3 4 22.5 4 15 V7 Z"
+        fill="#4f46e5"/>
+  <path d="M9 16 h4 l2 -5 3 9 2 -4 h4"
+        fill="none" stroke="#ffffff" stroke-width="2.2"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
