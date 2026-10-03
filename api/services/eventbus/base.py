@@ -97,6 +97,12 @@ class EventBus(ABC):
         iterable of event_type values to match exactly."""
 
     @abstractmethod
+    def unsubscribe(self, name: str) -> bool:
+        """Remove a previously registered handler by name. Returns True when
+        a subscriber was removed, False when the name was unknown (best-effort
+        teardown for transient consumers such as SSE connections)."""
+
+    @abstractmethod
     def replay(self, transaction_id: str | None = None) -> list[EventEnvelope]:
         """Return stored envelopes (optionally filtered by transaction).
         IN-MEMORY and bounded — NOT durable; the durable record remains

@@ -65,6 +65,7 @@ from api.schemas.risk_assessment import (
     RISK_HIGH,
     RISK_LOW,
     RISK_MEDIUM,
+    SOURCE_DATASET,
     EvidenceItem,
     RiskAssessment,
     TriggeredRule,
@@ -203,6 +204,12 @@ def assessment_from_record(record: RiskAssessmentRecord) -> RiskAssessment:
 
 def _assessment_from_record(record: RiskAssessmentRecord) -> RiskAssessment:
     """Rebuild the pydantic assessment from a stored row (reuse path)."""
+    evidence = [
+        # dataset-restored rows (db-branch risk_assessments.csv) predate the
+        # source column — stamp the honest provenance instead of 500ing
+        EvidenceItem(**{**e, "source": e.get("source") or SOURCE_DATASET})
+        for e in (record.evidence or [])
+    ]
     return RiskAssessment(
         transaction_id=record.transaction_id,
         assessment_id=record.assessment_id,
@@ -213,7 +220,7 @@ def _assessment_from_record(record: RiskAssessmentRecord) -> RiskAssessment:
         deterministic_risk_score=record.deterministic_risk_score,
         recovery_candidate=record.recovery_candidate,
         recovery_block_reason=record.recovery_block_reason,
-        evidence=[EvidenceItem(**e) for e in (record.evidence or [])],
+        evidence=evidence,
         triggered_rules=[TriggeredRule(**r) for r in (record.triggered_rules or [])],
         reconstruction_root_cause=record.reconstruction_root_cause,
         reconstruction_confidence=record.reconstruction_confidence,

@@ -5,6 +5,7 @@ import {
   FlaskConical,
   Info,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Menu,
   Presentation,
@@ -19,6 +20,7 @@ import { JudgeModeProvider, useJudgeMode } from "../context/JudgeModeContext";
 const NAV_ITEMS = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, staffOnly: false },
   { to: "/transactions", label: "Transactions", icon: RefreshCcw, staffOnly: false },
+  { to: "/support", label: "Support", icon: LifeBuoy, staffOnly: true },
   { to: "/demo", label: "Demo", icon: FlaskConical, staffOnly: true },
   { to: "/status", label: "Status", icon: Activity, staffOnly: true },
   { to: "/simulator", label: "Simulator", icon: Scale, staffOnly: true },

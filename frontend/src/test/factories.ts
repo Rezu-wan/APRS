@@ -1,5 +1,12 @@
 // Realistic fixture builders shared by all tests.
 import type {
+  CustomerProfileResponse,
+  CustomerSearchResult,
+  SupportCase,
+  SupportOverviewResponse,
+  SupportTransactionSummary,
+} from "../api/support";
+import type {
   ExplanationResponse,
   PaymentEventOut,
   RecoveryDecisionResponse,
@@ -284,6 +291,156 @@ export function makeRecoveryOutcome(
       recovery_candidate: true,
     },
     digital_twin_recorded: true,
+    ...overrides,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stage 12 support workspace
+// ---------------------------------------------------------------------------
+
+export function makeSupportTransactionSummary(
+  overrides: Partial<SupportTransactionSummary> = {}
+): SupportTransactionSummary {
+  return {
+    transaction_id: "TXN-SUP-1",
+    customer_id: "CUST-SUP-1",
+    merchant_id: "M-2002",
+    amount: 1500,
+    currency: "BDT",
+    timestamp: iso(30),
+    current_state: "RECOVERY_PENDING",
+    failure_reason: "GATEWAY_TIMEOUT",
+    risk_score: 0.12,
+    channel: "mobile_app",
+    country: "BD",
+    direction: "DEBIT",
+    transaction_type: "P2P",
+    ...overrides,
+  };
+}
+
+export function makeSupportCase(
+  overrides: Partial<SupportCase> = {}
+): SupportCase {
+  return {
+    case_id: "CASE-000000000001",
+    transaction_id: "TXN-SUP-1",
+    customer_id: "CUST-SUP-1",
+    subject: "Customer reports a failed payment",
+    description: "Money left the account but the merchant never confirmed.",
+    status: "OPEN",
+    priority: "HIGH",
+    created_by: "api_key_support",
+    assignee: null,
+    notes: [],
+    created_at: iso(20),
+    updated_at: iso(20),
+    resolved_at: null,
+    ...overrides,
+  };
+}
+
+export function makeCustomerSearchResult(
+  overrides: Partial<CustomerSearchResult> = {}
+): CustomerSearchResult {
+  return {
+    customer_id: "CUST-SUP-1",
+    full_name: "Nur Rahim",
+    email: "nur.rahim@example.com",
+    phone: "+8801700000001",
+    status: "active",
+    segment: "retail",
+    risk_profile: "LOW",
+    country: "BD",
+    transaction_count: 12,
+    failed_transaction_count: 2,
+    last_activity_at: iso(30),
+    open_case_count: 1,
+    dataset_known: true,
+    ...overrides,
+  };
+}
+
+export function makeCustomerProfile(
+  overrides: Partial<CustomerProfileResponse> = {}
+): CustomerProfileResponse {
+  return {
+    customer: {
+      customer_id: "CUST-SUP-1",
+      full_name: "Nur Rahim",
+      email: "nur.rahim@example.com",
+      phone: "+8801700000001",
+      status: "active",
+      segment: "retail",
+      risk_profile: "LOW",
+      country: "BD",
+    },
+    accounts: [
+      {
+        account_id: "ACCT-SUP-1",
+        account_type: "savings",
+        currency: "BDT",
+        balance: 42000,
+        status: "active",
+        is_primary: true,
+        last_activity_at: iso(30),
+      },
+    ],
+    aggregate: {
+      transaction_count: 12,
+      failed_count: 2,
+      recovered_count: 1,
+      last_activity_at: iso(30),
+    },
+    recent_transactions: [makeSupportTransactionSummary()],
+    behavior_signals: [],
+    open_cases: [],
+    dataset_known: true,
+    ...overrides,
+  };
+}
+
+export function makeSupportOverview(
+  overrides: Partial<SupportOverviewResponse> = {}
+): SupportOverviewResponse {
+  return {
+    cases_by_status: {
+      open: 2,
+      in_progress: 1,
+      waiting_for_customer: 0,
+      escalated: 1,
+      resolved: 5,
+      closed: 9,
+    },
+    needs_attention: [
+      {
+        transaction_id: "TXN-BLOCKED-1",
+        customer_id: "CUST-SUP-1",
+        amount: 1200,
+        currency: "BDT",
+        timestamp: iso(15),
+        failure_reason: "DOUBLE_DEBIT_EVIDENCE",
+        recovery_status: "BLOCKED",
+        blocked_reason: "DOUBLE_DEDUCTION",
+        risk_level: "MEDIUM",
+        anomaly_type: "SUSPICIOUS_PATTERN",
+        open_case_id: null,
+      },
+    ],
+    recent_activity: [
+      {
+        transaction_id: "TXN-SUP-1",
+        customer_id: "CUST-SUP-1",
+        customer_name: "Nur Rahim",
+        amount: 1500,
+        currency: "BDT",
+        timestamp: iso(30),
+        current_state: "RECOVERY_PENDING",
+        failure_reason: "GATEWAY_TIMEOUT",
+      },
+    ],
+    generated_at: iso(0),
     ...overrides,
   };
 }

@@ -123,12 +123,16 @@ SOURCE_TRANSACTION_FEATURE = "TRANSACTION_FEATURE"
 SOURCE_HISTORY = "HISTORY"
 SOURCE_RECONSTRUCTION = "RECONSTRUCTION"
 SOURCE_RULE = "RULE"
+# rows restored from the db-branch dataset (risk_assessments.csv) carry
+# evidence without a source column — the read path stamps this honestly
+SOURCE_DATASET = "DATASET"
 
 EVIDENCE_SOURCES = (
     SOURCE_PAYMENT_EVENT,
     SOURCE_TRANSACTION_FEATURE,
     SOURCE_HISTORY,
     SOURCE_RECONSTRUCTION,
+    SOURCE_DATASET,
     SOURCE_RULE,
 )
 

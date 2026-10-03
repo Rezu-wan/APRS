@@ -44,6 +44,36 @@ logger = logging.getLogger("payment_recovery.transactions")
 _ASSESS_ON = {TransactionState.FAILED}
 
 
+def _publish_state_events(events: list[DigitalTwinEvent]) -> None:
+    """Support-workspace realtime (Stage 12): mirror committed twin events
+    onto the Stage 11A bus so live consumers (e.g. the support SSE stream)
+    see transaction state changes. Best-effort — the bus can never break
+    ingestion (same contract as the payment-event publish path)."""
+    if not events:
+        return
+    try:
+        from api.services.eventbus.base import EventEnvelope
+        from api.services.eventbus.in_memory import get_event_bus
+
+        bus = get_event_bus()
+        for event in events:
+            bus.publish(
+                EventEnvelope(
+                    transaction_id=event.transaction_id,
+                    event_type=event.event_type,
+                    event_timestamp=event.timestamp,
+                    source="SYSTEM",
+                    payload={
+                        "previous_state": event.previous_state,
+                        "new_state": event.new_state,
+                        "reason": event.reason,
+                    },
+                )
+            )
+    except Exception:  # noqa: BLE001 — notification must never break ingestion
+        logger.warning("publishing twin events to the bus failed", exc_info=True)
+
+
 @dataclass
 class RecordEventResult:
     transaction: Transaction
@@ -190,6 +220,7 @@ def record_event(
 
     db.commit()
     db.refresh(tx)
+    _publish_state_events(result.events)
     if not created:
         logger.info(
             "transaction event applied: id=%s state=%s hops=%s",

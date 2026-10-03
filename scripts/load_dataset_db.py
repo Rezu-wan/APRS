@@ -16,11 +16,14 @@ test dataset without touching the normal demo database.
     # 3. run the app against it
     DATABASE_URL=sqlite:///./data/test_dataset.db uvicorn api.main:app
 
-Loaded: transactions, payment_events, digital_twin_events,
-risk_assessments, recovery_cases (-> recovery_actions).
+Loaded: transactions (incl. the dataset enrichment columns — account,
+device, channel, country, direction, type, counterparty), payment_events,
+digital_twin_events, risk_assessments, recovery_cases (-> recovery_actions),
+customers, accounts, devices, merchants, behavior_signals.
 Deliberately SKIPPED (no app table; derivable live by the Stage 11
-services): customers, accounts, merchants, devices, model_assessments,
-behavior_signals, relationship_edges.
+services): model_assessments, relationship_edges — per-transaction
+relationships and behavior signals are computed by the live services, and
+risk_level/risk_decision duplicate risk_assessments.
 
 Safety: refuses to load into a non-empty transactions table. Verifies
 counts against manifest.json and reports orphans. 100% synthetic data.
@@ -43,7 +46,12 @@ from sqlalchemy import func, insert, text  # noqa: E402
 
 from api.db.database import SessionLocal  # noqa: E402  (DATABASE_URL read at import)
 from api.db.models import (  # noqa: E402
+    Account,
+    Customer,
+    CustomerBehaviorSignal,
+    Device,
     DigitalTwinEvent,
+    Merchant,
     PaymentEvent,
     RecoveryActionRecord,
     RiskAssessmentRecord,
@@ -127,6 +135,80 @@ def _tx_row(r: dict) -> dict:
         "failure_probability": _num(r["failure_probability"]),
         "safe_to_release_probability": _num(r["safe_to_release_probability"]),
         "safe_to_release": _bool(r["safe_to_release"]),
+        # dataset enrichment (support workspace) — display context only
+        "account_id": r.get("account_id") or None,
+        "device_id": r.get("device_id") or None,
+        "counterparty": r.get("counterparty") or None,
+        "direction": r.get("direction") or None,
+        "transaction_type": r.get("transaction_type") or None,
+        "channel": r.get("channel") or None,
+        "country": r.get("country") or None,
+    }
+
+
+def _customer_row(r: dict) -> dict:
+    return {
+        "customer_id": r["customer_id"],
+        "full_name": r["full_name"],
+        "email": r["email"],
+        "phone": r["phone"] or None,
+        "country": r["country"] or None,
+        "status": r["status"],
+        "segment": r["segment"] or None,
+        "risk_profile": r["risk_profile"] or None,
+        "archetype": r["archetype"] or None,
+        "created_at": _parse_dt(r["created_at"]),
+    }
+
+
+def _account_row(r: dict) -> dict:
+    return {
+        "account_id": r["account_id"],
+        "customer_id": r["customer_id"],
+        "account_type": r["account_type"],
+        "currency": r["currency"],
+        "balance": _dec(r["balance"]),
+        "opening_balance": _dec(r["opening_balance"]),
+        "status": r["status"],
+        "is_primary": _bool(r.get("primary")) or False,
+        "created_at": _parse_dt(r["created_at"]),
+        "last_activity_at": _parse_dt(r["last_activity_at"]),
+    }
+
+
+def _device_row(r: dict) -> dict:
+    return {
+        "device_id": r["device_id"],
+        "os": r["os"] or None,
+        "model": r["model"] or None,
+        "trusted": _bool(r["trusted"]) or False,
+        "first_seen": _parse_dt(r["first_seen"]),
+    }
+
+
+def _merchant_row(r: dict) -> dict:
+    return {
+        "merchant_id": r["merchant_id"],
+        "name": r["name"],
+        "category": r["category"] or None,
+        "country": r["country"] or None,
+        "risk_tier": r["risk_tier"] or None,
+        "traffic_weight": _num(r["traffic_weight"]),
+        "created_at": _parse_dt(r["created_at"]),
+    }
+
+
+def _behavior_row(r: dict) -> dict:
+    return {
+        "behavior_id": r["behavior_id"],
+        "customer_id": r["customer_id"],
+        "signal_name": r["signal_name"],
+        "signal_value": _num(r["signal_value"]),
+        "unit": r["unit"] or None,
+        "signal_level": r["signal_level"] or "UNKNOWN",
+        "baseline_source": r["baseline_source"] or None,
+        "window": r["window"] or None,
+        "computed_at": _parse_dt(r["computed_at"]),
     }
 
 
@@ -239,6 +321,18 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
         print(f"Loading dataset from {DATASET_DIR}/")
+        # registries first (transactions / accounts FK-reference them)
+        _bulk(db, Customer, [_customer_row(r) for r in _rows("customers")], "customers")
+        _bulk(db, Account, [_account_row(r) for r in _rows("accounts")], "accounts")
+        _bulk(db, Device, [_device_row(r) for r in _rows("devices")], "devices")
+        _bulk(db, Merchant, [_merchant_row(r) for r in _rows("merchants")], "merchants")
+        _bulk(
+            db,
+            CustomerBehaviorSignal,
+            [_behavior_row(r) for r in _rows("behavior_signals")],
+            "behavior_signals",
+        )
+
         tx_rows = [_tx_row(r) for r in _rows("transactions")]
         known_ids = {r["transaction_id"] for r in tx_rows}
         db.execute(insert(Transaction), tx_rows)
@@ -271,6 +365,11 @@ def main(argv: list[str] | None = None) -> int:
         with open(os.path.join(DATASET_DIR, "manifest.json"), encoding="utf-8") as fh:
             manifest = json.load(fh)["counts"]
         for label, model, expected in (
+            ("customers", Customer, manifest["customers.csv"]),
+            ("accounts", Account, manifest["accounts.csv"]),
+            ("devices", Device, manifest["devices.csv"]),
+            ("merchants", Merchant, manifest["merchants.csv"]),
+            ("behavior_signals", CustomerBehaviorSignal, manifest["behavior_signals.csv"]),
             ("transactions", Transaction, manifest["transactions.csv"]),
             ("payment_events", PaymentEvent, manifest["payment_events.csv"]),
             ("digital_twin_events", DigitalTwinEvent, manifest["digital_twin_events.csv"]),

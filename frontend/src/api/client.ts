@@ -156,3 +156,13 @@ export async function post<T>(url: string, body?: unknown): Promise<T> {
     throw normalizeError(error);
   }
 }
+
+export async function patch<T>(url: string, body?: unknown): Promise<T> {
+  try {
+    const response = await apiClient.patch<T>(url, body);
+    return response.data;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw normalizeError(error);
+  }
+}
