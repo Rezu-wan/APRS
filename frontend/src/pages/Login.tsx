@@ -12,10 +12,6 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
   const from =
     typeof location.state === "object" &&
     location.state !== null &&
@@ -23,6 +19,14 @@ export function Login() {
     typeof (location.state as { from: unknown }).from === "string"
       ? (location.state as { from: string }).from
       : "/dashboard";
+
+  if (user) {
+    // `from` (ProtectedRoute's bounce target) wins over the dashboard so a
+    // post-reload sign-in returns to where the session was lost — this render
+    // can beat handleSubmit's own navigate() when the key-less reload bounces
+    // an already-submitted form back here.
+    return <Navigate to={from} replace />;
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
