@@ -320,7 +320,9 @@ class RecoveryActionRecord(Base):
     risk_assessment_id: Mapped[str | None] = mapped_column(String(36), index=True)
 
     decision_reason: Mapped[str] = mapped_column(Text)
-    blocked_reason: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    # 96: dataset blocked-reason sentences run to 68 chars (migration
+    # e8f9a0b1c2d3 widens the column to match)
+    blocked_reason: Mapped[str | None] = mapped_column(String(96), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # sandbox provider ("mock") + its result/verification snapshots
