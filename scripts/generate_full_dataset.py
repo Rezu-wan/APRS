@@ -360,7 +360,7 @@ class Dataset:
     # ---------------------------------------------------------- transactions
     def gen_transactions(self):
         rng = self.rng_t
-        target = round(10_500 * self.scale)
+        target = round(27_500 * self.scale)  # DENSITY: ~45 tx/customer (was 10_500)
         accs_by_cust: dict[str, list[dict]] = {}
         for a in self.accounts:
             accs_by_cust.setdefault(a["customer_id"], []).append(a)
@@ -712,6 +712,7 @@ class Dataset:
             pev_ts = t0 + timedelta(seconds=rng_e.uniform(1, 4))
             anomaly = "NONE"
             root_cause, conf = "", ""
+            rules = []
 
             if t["current_state"] == "SUCCESS" and not is_stalled:
                 style = rng_e.random()
