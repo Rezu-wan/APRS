@@ -4,7 +4,6 @@ services:
     name: aprs-backend
     env: python
     region: singapore
-    plan: free
     buildCommand: pip install -r requirements.txt && alembic upgrade head
     startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
     envVars:
@@ -46,7 +45,6 @@ services:
   - type: web
     name: aprs-frontend
     env: static
-    plan: free
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     envVars:
