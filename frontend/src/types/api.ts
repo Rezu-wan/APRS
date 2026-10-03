@@ -240,8 +240,10 @@ export interface ReconstructionResult {
   transaction_id: string;
   ordered_events: PaymentEventOut[];
   current_stage: ReconstructionStage;
-  last_successful_stage: ReconstructionStage;
-  failure_stage: ReconstructionStage;
+  /** Null when no stage has CONFIRMED evidence (e.g. sparse evidence). */
+  last_successful_stage: ReconstructionStage | null;
+  /** Null when the chain contains no failure (success / sparse cases). */
+  failure_stage: ReconstructionStage | null;
   root_cause: string;
   customer_debit_status: ReconstructionEventStatus;
   gateway_status: ReconstructionEventStatus;
@@ -629,8 +631,11 @@ export const reconstructionResultSchema = z.object({
   transaction_id: z.string(),
   ordered_events: z.array(paymentEventOutSchema),
   current_stage: reconstructionStageSchema,
-  last_successful_stage: reconstructionStageSchema,
-  failure_stage: reconstructionStageSchema,
+  // The backend emits null for last_successful_stage when nothing is
+  // CONFIRMED and for failure_stage when the chain has no failure
+  // (success / sparse-evidence cases) — both are honest unknowns.
+  last_successful_stage: reconstructionStageSchema.nullable(),
+  failure_stage: reconstructionStageSchema.nullable(),
   root_cause: z.string(),
   customer_debit_status: paymentEventOutSchema.shape.status,
   gateway_status: paymentEventOutSchema.shape.status,
