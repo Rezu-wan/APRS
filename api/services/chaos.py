@@ -546,7 +546,10 @@ def _run_late_settlement(db: Session, ml, provider, tid: str, start: datetime):
         _inv(
             "late_settlement_ingested",
             ingest_result.get("created") == 1,
-            f"ingest result {ingest_result}",
+            "late SETTLEMENT_CONFIRMED ingested: "
+            f"created={ingest_result.get('created')} "
+            f"duplicates={ingest_result.get('duplicates')} "
+            f"tx={ingest_result.get('transaction_id')!r}",
         ),
         _inv(
             "blocked_by_fresh_evidence_gate",

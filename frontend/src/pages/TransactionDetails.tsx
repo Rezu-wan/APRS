@@ -127,6 +127,10 @@ export default function TransactionDetails() {
             <h2 id="model-assessment-heading" className="text-sm font-semibold text-slate-900">
               Model assessment
             </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Stage-2 model snapshot (advisory) — decisions are driven by the Stage-7
+              hybrid risk assessment further down this page.
+            </p>
             <p className="mt-3 text-sm text-slate-600">
               Failure prediction:{" "}
               <span className="font-medium text-slate-900">
