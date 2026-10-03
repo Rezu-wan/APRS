@@ -51,8 +51,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from api.services.demo_scenarios import (  # noqa: E402  (path fix above)
     DEMO_BASE,
     SCENARIOS,
-    _CLEAN_FIXTURE,
     build_events,
+    scenario_fixture,
 )
 
 DEFAULT_API_URL = "http://127.0.0.1:8000"
@@ -114,7 +114,7 @@ def seed_scenario(key: str, spec: dict, base_url: str, api_key: str) -> dict:
     # 1. create the transaction — 400 INVALID_STATE_TRANSITION on rerun
     status, body = _request(
         "POST", f"{base_url}/api/v1/transaction/event", api_key,
-        {"transaction_id": tid, **_CLEAN_FIXTURE},
+        {"transaction_id": tid, **scenario_fixture(key)},
     )
     if status == 200:
         record["note"] = "created"

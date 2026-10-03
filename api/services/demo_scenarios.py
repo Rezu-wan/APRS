@@ -164,6 +164,29 @@ SCENARIOS: dict[str, dict] = {
 
 DEMO_TRANSACTION_PREFIX = "DEMO-S"
 
+# Stage 11 polish: per-scenario identities so the relationship / behavioral
+# panels tell a DISTINCT story per scenario — a single shared fixture made
+# every DEMO transaction look like one user bursting at one merchant. S6
+# keeps S1's identity ON PURPOSE: it is S1's twin (the same customer's
+# duplicate-process story), so their signals SHOULD agree.
+SCENARIO_IDENTITIES: dict[str, dict] = {
+    "S1": {"user_id": "USER-DEMO-1", "merchant_id": "MERCHANT-DEMO-1"},
+    "S2": {"user_id": "USER-DEMO-2", "merchant_id": "MERCHANT-DEMO-2"},
+    "S3": {"user_id": "USER-DEMO-3", "merchant_id": "MERCHANT-DEMO-3"},
+    "S4": {"user_id": "USER-DEMO-4", "merchant_id": "MERCHANT-DEMO-4"},
+    "S5": {"user_id": "USER-DEMO-5", "merchant_id": "MERCHANT-DEMO-5"},
+    "S6": {"user_id": "USER-DEMO-1", "merchant_id": "MERCHANT-DEMO-1"},
+}
+
+
+def scenario_fixture(key: str) -> dict:
+    """The clean fixture with the scenario's identity applied. Shared by the
+    demo router (prepare) and scripts/seed_demo.py so both paths seed the
+    SAME data."""
+    fixture = dict(_CLEAN_FIXTURE)
+    fixture.update(SCENARIO_IDENTITIES.get(key, {}))
+    return fixture
+
 
 def scenario_transaction_id(key: str) -> str:
     return f"DEMO-{key}"
@@ -269,7 +292,9 @@ def prepare_scenario(db, key: str) -> list[str]:
 
     # 1. transaction create-or-adopt (the fixture payload is idempotent)
     if get_transaction(db, tid) is None:
-        payload = TransactionEventRequest(transaction_id=tid, **_CLEAN_FIXTURE)
+        payload = TransactionEventRequest(
+            transaction_id=tid, **scenario_fixture(key)
+        )
         record_event(db, payload, get_ml_service(), get_settings())
         actions.append("transaction_created")
     else:
