@@ -41,5 +41,13 @@ evidence; S5 late-settlement race — never released).
 - P2P transfers are represented as a single row on the sender's account
   (counterparty customer in `counterparty`); mule fan-in is represented
   as credit rows on the mule's account. There is no double-entry ledger.
-- Not loaded into the database automatically; a future loader can map
-  these files 1:1 onto existing tables without schema changes.
+- Loaded into the database with `scripts/load_dataset.py`
+  (`.venv/bin/python -m scripts.load_dataset`; wipe + reload with an
+  automatic timestamped backup of the SQLite file, then verifies row counts
+  against `manifest.json`). Five tables map 1:1 (`transactions`,
+  `digital_twin_events`, `payment_events`, `risk_assessments`,
+  `recovery_cases`→`recovery_actions`); `customers.csv`/`merchants.csv`
+  load into reference tables added by migration
+  `e8f9a0b1c2d3_dataset_reference_tables`. `accounts`, `devices`,
+  `behavior_signals`, `relationship_edges`, and `model_assessments` stay
+  unloaded — risk internals the API deliberately keeps out of the models.

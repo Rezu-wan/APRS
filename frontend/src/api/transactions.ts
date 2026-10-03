@@ -7,7 +7,9 @@ import {
   riskAssessmentResponseSchema,
   statsSummarySchema,
   timelineResponseSchema,
+  transactionListResponseSchema,
   transactionSchema,
+  transactionsSummarySchema,
   type RecoveryEvaluateResult,
   type RecoveryOutcome,
   type RecoveryRecord,
@@ -16,6 +18,8 @@ import {
   type StatsSummary,
   type TimelineResponse,
   type Transaction,
+  type TransactionListResponse,
+  type TransactionsSummary,
 } from "../types/api";
 
 /** GET /transactions/{id} — 404 propagates as ApiError. */
@@ -24,13 +28,48 @@ export async function getTransaction(id: string): Promise<Transaction> {
   return transactionSchema.parse(data);
 }
 
+export interface ListTransactionsParams {
+  limit?: number;
+  offset?: number;
+  /** Exact current-state filter (backend validates against ALL_STATES). */
+  state?: string;
+  /** ISO datetimes — axios percent-encodes the "+" offset correctly. */
+  date_from?: string;
+  date_to?: string;
+}
+
+/**
+ * GET /transactions — newest first. CUSTOMER callers are always scoped to
+ * their own transactions server-side (any user_id param is staff-only).
+ */
+export async function listTransactions(
+  params: ListTransactionsParams = {}
+): Promise<TransactionListResponse> {
+  const data = await get<unknown>("/transactions", {
+    params: Object.fromEntries(
+      Object.entries(params).filter(([, value]) => value !== undefined)
+    ),
+  });
+  return transactionListResponseSchema.parse(data);
+}
+
+/**
+ * GET /transactions/summary — role-scoped aggregates: a customer's own
+ * totals, or platform-wide totals for staff.
+ */
+export async function getTransactionsSummary(): Promise<TransactionsSummary> {
+  const data = await get<unknown>("/transactions/summary");
+  return transactionsSummarySchema.parse(data);
+}
+
 /** GET /transactions/{id}/timeline — events ordered ascending by the backend. */
 export async function getTimeline(id: string): Promise<TimelineResponse> {
   const data = await get<unknown>(`/transactions/${encodeURIComponent(id)}/timeline`);
   return timelineResponseSchema.parse(data);
 }
 
-/** GET /transactions/{id}/reconstruction — blocked for CUSTOMER (403), 404 for unknown transactions. */
+/** GET /transactions/{id}/reconstruction — the backend scopes it to the
+ * caller's own transactions (403 otherwise), 404 for unknown transactions. */
 export async function getReconstruction(id: string): Promise<ReconstructionResult> {
   const data = await get<unknown>(`/transactions/${encodeURIComponent(id)}/reconstruction`);
   return reconstructionResultSchema.parse(data);

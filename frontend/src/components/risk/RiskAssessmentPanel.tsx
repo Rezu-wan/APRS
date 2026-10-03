@@ -259,9 +259,11 @@ function AssessmentBody({ assessment }: { assessment: RiskAssessment }) {
                   </span>
                   <span className="min-w-0">
                     {item.description}
-                    <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-500">
-                      {item.source}
-                    </span>
+                    {item.source ? (
+                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-500">
+                        {item.source}
+                      </span>
+                    ) : null}
                   </span>
                 </li>
               );

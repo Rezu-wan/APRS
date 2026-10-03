@@ -25,6 +25,7 @@ devices/merchants/   registry + customer-level behavior signals, loaded
 customer_behavior_   from data/dataset/*.csv by scripts/load_dataset_db.py;
 signals              display/investigation data, never decision inputs
 support_cases        customer-care ticket queue (OPEN → … → CLOSED)
+customer_reports     customer-filed problem reports (evidence only)
 
 Timestamps are timezone-aware UTC. UUIDs are stored as 36-char strings for
 portability across PostgreSQL and SQLite.
@@ -46,6 +47,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -391,6 +393,43 @@ class SandboxLedgerEntry(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+
+class CustomerReport(Base):
+    """Customer problem report — DECISION EVIDENCE ONLY, never an action.
+
+    A customer files a problem against one of THEIR transactions plus where in
+    the payment flow it happened. The report never changes transaction state
+    and never acts as a policy decision by itself.
+    """
+
+    __tablename__ = "customer_reports"
+    __table_args__ = (
+        UniqueConstraint("transaction_id", "customer_id", name="uq_customer_report"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    report_id: Mapped[str] = mapped_column(
+        String(36), unique=True, default=new_event_id, index=True
+    )
+    transaction_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("transactions.transaction_id"), index=True
+    )
+    customer_id: Mapped[str] = mapped_column(String(64), index=True)
+
+    problem_type: Mapped[str] = mapped_column(String(32))
+    stage: Mapped[str] = mapped_column(String(32))
+    description: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(16), default="OPEN")
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+    transaction: Mapped[Transaction] = relationship()
 
 
 class Customer(Base):

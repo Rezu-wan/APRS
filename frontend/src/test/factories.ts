@@ -362,7 +362,7 @@ export function makeCustomerSearchResult(
   };
 }
 
-export function makeCustomerProfile(
+export function makeSupportCustomerProfile(
   overrides: Partial<CustomerProfileResponse> = {}
 ): CustomerProfileResponse {
   return {
@@ -444,3 +444,79 @@ export function makeSupportOverview(
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Customer dashboard fixtures — role-scoped list/summary + problem reports.
+// ---------------------------------------------------------------------------
+
+export function makeTransactionsSummary(
+  overrides: Partial<import("../types/api").TransactionsSummary> = {}
+): import("../types/api").TransactionsSummary {
+  return {
+    total: 3,
+    by_state: { RECOVERY_PENDING: 2, SUCCESS: 1 },
+    amounts_by_currency: { BDT: "4200.00" },
+    ...overrides,
+  };
+}
+
+export function makeTransactionListResponse(
+  transactions: Transaction[],
+  overrides: Partial<import("../types/api").TransactionListResponse> = {}
+): import("../types/api").TransactionListResponse {
+  return {
+    items: transactions,
+    total: transactions.length,
+    limit: 10,
+    offset: 0,
+    ...overrides,
+  };
+}
+
+export function makeCustomerReport(
+  overrides: Partial<import("../types/api").CustomerReport> = {}
+): import("../types/api").CustomerReport {
+  return {
+    report_id: "RPT-1",
+    transaction_id: "TXN-1",
+    customer_id: "alice",
+    problem_type: "PAYMENT_FAILED",
+    stage: "GATEWAY",
+    description: "The gateway timed out but my card was charged.",
+    status: "OPEN",
+    created_at: iso(10),
+    updated_at: iso(10),
+    ...overrides,
+  };
+}
+
+export function makeCustomerReportFileResponse(
+  overrides: Partial<import("../types/api").CustomerReportFileResponse> = {}
+): import("../types/api").CustomerReportFileResponse {
+  const report = makeCustomerReport();
+  return {
+    report,
+    already_reported: false,
+    digital_twin_event_recorded: true,
+    ...overrides,
+  };
+}
+
+export function makeCustomerProfile(
+  overrides: Partial<import("../types/api").CustomerProfile> = {}
+): import("../types/api").CustomerProfile {
+  return {
+    customer_id: "CUST-000084",
+    full_name: "Sabbir Mustafi",
+    email: "sabbir.mustafi241@example.com",
+    phone: "+880186585156",
+    country: "BD",
+    status: "active",
+    segment: "retail",
+    risk_profile: "LOW",
+    archetype: "biller",
+    member_since: "2026-02-20T05:57:00Z",
+    ...overrides,
+  };
+}
+

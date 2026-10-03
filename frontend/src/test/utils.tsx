@@ -9,6 +9,7 @@ import type { Role } from "../types/api";
 export interface AuthUserStub {
   role: Role;
   keyName: string;
+  customerId?: string | null;
 }
 
 interface RenderWithProvidersOptions extends Omit<RenderOptions, "wrapper"> {

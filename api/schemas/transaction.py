@@ -135,6 +135,19 @@ class TransactionResponse(BaseModel):
     account_age_days: int
     failure_reason: str | None
     current_state: str
+
+    # descriptive payment attributes (dataset-loaded; null on rows created
+    # before the loader ran). NOT risk internals — safe for every role.
+    transaction_type: str | None = None
+    channel: str | None = None
+    direction: str | None = None
+    country: str | None = None
+
+    # merchant-catalog resolution (merchants table); null when the id has no
+    # catalog row (e.g. P2P/withdrawal rows carry an empty merchant id)
+    merchant_name: str | None = None
+    merchant_category: str | None = None
+
     failure_prediction: str | None
     failure_probability: float | None
     risk_score: float | None
@@ -171,3 +184,23 @@ class TimelineResponse(BaseModel):
     current_state: str
     event_count: int
     events: list[TimelineEvent]
+
+
+class TransactionListResponse(BaseModel):
+    """Paginated transaction list. CUSTOMER callers are auto-scoped to their
+    own user_id server-side; staff may pass ?user_id= to filter."""
+
+    items: list[TransactionResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class TransactionsSummaryResponse(BaseModel):
+    """Role-scoped aggregate over transactions (customer dashboard stats).
+    CUSTOMER callers get totals for their own transactions only; staff get
+    platform-wide totals. Amounts keyed by currency as exact strings."""
+
+    total: int
+    by_state: dict[str, int]
+    amounts_by_currency: dict[str, str]

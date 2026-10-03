@@ -9,7 +9,7 @@ import CustomerProfile from "../pages/support/CustomerProfile";
 import SupportTransaction from "../pages/support/SupportTransaction";
 import { AppRoutes } from "../router";
 import {
-  makeCustomerProfile,
+  makeSupportCustomerProfile,
   makeCustomerSearchResult,
   makeSupportCase,
   makeSupportOverview,
@@ -158,7 +158,7 @@ describe("CustomerProfile", () => {
   }
 
   it("renders the registry customer with accounts and aggregates", async () => {
-    mockGetSupportCustomerProfile.mockResolvedValue(makeCustomerProfile());
+    mockGetSupportCustomerProfile.mockResolvedValue(makeSupportCustomerProfile());
 
     renderProfile();
 
@@ -173,7 +173,7 @@ describe("CustomerProfile", () => {
 
   it("flags customers that exist only as transaction users", async () => {
     mockGetSupportCustomerProfile.mockResolvedValue(
-      makeCustomerProfile({
+      makeSupportCustomerProfile({
         customer: {
           customer_id: "USER-ONLY-9",
           full_name: "USER-ONLY-9",

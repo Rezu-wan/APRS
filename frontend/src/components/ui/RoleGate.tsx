@@ -21,13 +21,18 @@ function AccessDenied() {
 interface RoleGateProps {
   allowed: Role[];
   children: ReactNode;
+  /** Render nothing instead of the AccessDenied card (for sections that are
+   * simply not part of a narrower role's page, e.g. staff panels on the
+   * customer transaction view). */
+  silent?: boolean;
 }
 
-/** Renders children only when the current user's role is in `allowed`; otherwise AccessDenied. */
-export function RoleGate({ allowed, children }: RoleGateProps) {
+/** Renders children only when the current user's role is in `allowed`; otherwise
+ * AccessDenied (or nothing when `silent`). */
+export function RoleGate({ allowed, children, silent = false }: RoleGateProps) {
   const { user } = useAuth();
   if (!user || !allowed.includes(user.role)) {
-    return <AccessDenied />;
+    return silent ? null : <AccessDenied />;
   }
   return <>{children}</>;
 }

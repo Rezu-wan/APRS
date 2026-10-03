@@ -4,6 +4,8 @@ export interface Session {
   apiKey: string;
   role: Role;
   keyName: string;
+  /** Stage 9: bound customer identity (CUSTOMER keys only). */
+  customerId?: string | null;
 }
 
 const SESSION_KEY = "prdt.auth";
@@ -19,7 +21,12 @@ export function getSession(): Session | null {
     if (typeof parsed.role !== "string" || typeof parsed.keyName !== "string") {
       return null;
     }
-    return { apiKey: parsed.apiKey, role: parsed.role as Role, keyName: parsed.keyName };
+    return {
+      apiKey: parsed.apiKey,
+      role: parsed.role as Role,
+      keyName: parsed.keyName,
+      customerId: typeof parsed.customerId === "string" ? parsed.customerId : null,
+    };
   } catch {
     // Corrupted session payload — treat as no session.
     return null;

@@ -27,11 +27,22 @@ vi.mock("../api/transactions", () => ({
   getTransaction: vi.fn(),
   getTimeline: vi.fn(),
   getStats: vi.fn(),
+  listTransactions: vi.fn(),
+  getTransactionsSummary: vi.fn(),
   getReconstruction: vi.fn(),
   getRiskAssessment: vi.fn(),
   runRiskAssessment: vi.fn(),
   getRecovery: vi.fn(),
   processRecovery: vi.fn(),
+}));
+
+vi.mock("../api/customerReports", () => ({
+  fileCustomerReport: vi.fn(),
+  getCustomerReport: vi.fn(),
+}));
+
+vi.mock("../api/customers", () => ({
+  getMyProfile: vi.fn(),
 }));
 
 vi.mock("../api/recovery", () => ({
@@ -93,6 +104,8 @@ vi.mock("../api/support", async (importOriginal) => {
 // awaited module is the mocked one — the exported handles ARE the mock fns.
 const authMod = await import("../api/auth");
 const transactionsMod = await import("../api/transactions");
+const customerReportsMod = await import("../api/customerReports");
+const customersMod = await import("../api/customers");
 const recoveryMod = await import("../api/recovery");
 const explanationsMod = await import("../api/explanations");
 const demoMod = await import("../api/demo");
@@ -141,6 +154,60 @@ export const mockGetStats = vi.mocked(transactionsMod.getStats) as unknown as {
   mockResolvedValue: (v: StatsSummary) => unknown;
   mockRejectedValue: (v: unknown) => unknown;
   mockReturnValue: (v: Promise<StatsSummary>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockListTransactions = vi.mocked(
+  transactionsMod.listTransactions
+) as unknown as {
+  (params?: import("../api/transactions").ListTransactionsParams): Promise<import("../types/api").TransactionListResponse>;
+  mockResolvedValue: (v: import("../types/api").TransactionListResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetTransactionsSummary = vi.mocked(
+  transactionsMod.getTransactionsSummary
+) as unknown as {
+  (): Promise<import("../types/api").TransactionsSummary>;
+  mockResolvedValue: (v: import("../types/api").TransactionsSummary) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetCustomerReport = vi.mocked(
+  customerReportsMod.getCustomerReport
+) as unknown as {
+  (id: string): Promise<import("../types/api").CustomerReport | null>;
+  mockResolvedValue: (v: import("../types/api").CustomerReport | null) => unknown;
+  mockResolvedValueOnce: (v: import("../types/api").CustomerReport | null) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetMyProfile = vi.mocked(customersMod.getMyProfile) as unknown as {
+  (): Promise<import("../types/api").CustomerProfile | null>;
+  mockResolvedValue: (v: import("../types/api").CustomerProfile | null) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockFileCustomerReport = vi.mocked(
+  customerReportsMod.fileCustomerReport
+) as unknown as {
+  (input: import("../api/customerReports").FileCustomerReportInput): Promise<import("../types/api").CustomerReportFileResponse>;
+  mockResolvedValue: (v: import("../types/api").CustomerReportFileResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
   mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
   mockReset: () => unknown;
   mock: { calls: unknown[][] };
@@ -490,6 +557,28 @@ function defaultProcessRecovery(): Promise<import("../types/api").RecoveryOutcom
   return Promise.reject(new ApiError(500, "UNKNOWN", "processRecovery not stubbed"));
 }
 
+// Customer-dashboard defaults — an empty scoped list/summary and no report,
+// so tests that don't care about them stay quiet.
+function defaultListTransactions(): Promise<import("../types/api").TransactionListResponse> {
+  return Promise.resolve({ items: [], total: 0, limit: 50, offset: 0 });
+}
+
+function defaultTransactionsSummary(): Promise<import("../types/api").TransactionsSummary> {
+  return Promise.resolve({ total: 0, by_state: {}, amounts_by_currency: {} });
+}
+
+function defaultGetCustomerReport(): Promise<import("../types/api").CustomerReport | null> {
+  return Promise.resolve(null);
+}
+
+function defaultFileCustomerReport(): Promise<import("../types/api").CustomerReportFileResponse> {
+  return Promise.reject(new ApiError(500, "UNKNOWN", "fileCustomerReport not stubbed"));
+}
+
+function defaultGetMyProfile(): Promise<import("../types/api").CustomerProfile | null> {
+  return Promise.resolve(null);
+}
+
 // Stage 10 demo defaults — pages must handle an empty scenario list, and the
 // console renders the shape below when no test overrides it.
 function defaultDemoScenarios(): Promise<import("../api/demo").DemoScenariosResponse> {
@@ -610,6 +699,16 @@ export function resetApiMocks(): void {
   mockGetRecovery.mockImplementation(defaultGetRecovery as never);
   mockProcessRecovery.mockReset();
   mockProcessRecovery.mockImplementation(defaultProcessRecovery as never);
+  mockListTransactions.mockReset();
+  mockListTransactions.mockImplementation(defaultListTransactions as never);
+  mockGetTransactionsSummary.mockReset();
+  mockGetTransactionsSummary.mockImplementation(defaultTransactionsSummary as never);
+  mockGetCustomerReport.mockReset();
+  mockGetCustomerReport.mockImplementation(defaultGetCustomerReport as never);
+  mockFileCustomerReport.mockReset();
+  mockFileCustomerReport.mockImplementation(defaultFileCustomerReport as never);
+  mockGetMyProfile.mockReset();
+  mockGetMyProfile.mockImplementation(defaultGetMyProfile as never);
   mockReleaseLimit.mockReset();
   mockRequestExplanation.mockReset();
   mockGetDemoScenarios.mockReset();
