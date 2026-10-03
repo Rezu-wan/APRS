@@ -1,0 +1,63 @@
+{
+  "experiment": "stage11_phase_11h",
+  "run_id": "dfa4f80c2d1545f5bbed6d7c362e427d",
+  "research_question": "Can safety-gated autonomous recovery reduce recovery latency while preventing unsafe financial state changes compared with less constrained recovery strategies?",
+  "dataset_fingerprint": "12dddfdea660c9b1721f2a17c46a3087370fd0b4987aa52ca56bfaccb4adf427",
+  "policy_versions_evaluated": [
+    "autonomous-v1",
+    "manual-only-baseline",
+    "autonomous-v2-experimental"
+  ],
+  "code_versions": {
+    "policies": [
+      "autonomous-v1",
+      "manual-only-baseline",
+      "autonomous-v2-experimental"
+    ],
+    "rule_version": "1",
+    "model_version": "synthetic-v1",
+    "executor": "not-invoked",
+    "verifier": "not-invoked"
+  },
+  "seed": 42,
+  "seed_note": "Recorded for convention only. The simulator and demo corpus are deterministic: the same seed + same corpus reproduce the same dataset_fingerprint and the same E1 decision metrics. The seed does not jitter anything in this experiment.",
+  "git_commit": "b4ecf6e39ba0e528d6bc7fbb2cffea5e260a4d10",
+  "experiment_timestamp_utc": "2026-10-03T00:48:21Z",
+  "api_url": "http://127.0.0.1:8000",
+  "environment": "development",
+  "configuration": {
+    "policies": [
+      "autonomous-v1",
+      "manual-only-baseline",
+      "autonomous-v2-experimental"
+    ],
+    "simulator_source": {
+      "demo": true
+    },
+    "chaos_scenarios": [
+      "GATEWAY_TIMEOUT",
+      "GATEWAY_ERROR",
+      "MERCHANT_TIMEOUT",
+      "LATE_SETTLEMENT",
+      "DUPLICATE_EVENT",
+      "OUT_OF_ORDER_EVENT",
+      "PROVIDER_TIMEOUT",
+      "PROVIDER_ERROR",
+      "CONCURRENT_RECOVERY",
+      "DB_FAILURE_SIMULATION"
+    ],
+    "gate_contribution_scenarios": [
+      "LATE_SETTLEMENT",
+      "CONCURRENT_RECOVERY"
+    ],
+    "latency_series": [
+      "recovery_latency_ms",
+      "risk_latency_ms",
+      "reconstruction_latency_ms"
+    ],
+    "demo_reset_before_measurement": true,
+    "figures_enabled": true,
+    "output_files": {},
+    "sandbox_only": true
+  }
+}
