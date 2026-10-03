@@ -1,12 +1,31 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
+import { ApiError } from "./api/client";
 import { AuthProvider } from "./context/AuthContext";
 import { AppRoutes } from "./router";
+
+// Retry transient failures (network blips, a backend restart) with
+// exponential backoff so a short gap self-heals. Deterministic client
+// errors are answers, not failures — 401/403/404/422 are never retried,
+// and 429 is surfaced honestly with its Retry-After (Stage 9 contract).
+// Only 5xx / network errors retry, at most twice (~1s + 2s). Under the
+// vitest runner this stays at the old single-retry behavior: delayed
+// retries would race the synchronous act()-based tests.
+const isTestRunner = import.meta.env.MODE === "test";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: isTestRunner
+        ? 1
+        : (failureCount, error) => {
+            if (failureCount >= 2) return false;
+            if (error instanceof ApiError && error.status !== null && error.status < 500) {
+              return false;
+            }
+            return true;
+          },
+      retryDelay: isTestRunner ? 0 : (attempt) => Math.min(1000 * 2 ** attempt, 4000),
       refetchOnWindowFocus: false,
       staleTime: 30_000,
     },
