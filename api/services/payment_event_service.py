@@ -252,6 +252,9 @@ def ingest_events(db: Session, transaction_id: str, payloads: list) -> dict:
     _publish_created_events(created)
     if created:  # Stage 11G: new events only, never replays
         record_counter(METRICS_PAYMENT_EVENTS_TOTAL, float(len(created)))
+        # Invalidate reconstruction cache for this transaction (new evidence)
+        from api.services.event_reconstruction import clear_reconstruction_cache
+        clear_reconstruction_cache(transaction_id)
     logger.info(
         "payment events ingested: tx=%s created=%d duplicates=%d",
         transaction_id, len(created), duplicates,

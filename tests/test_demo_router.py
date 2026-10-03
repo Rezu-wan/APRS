@@ -89,9 +89,11 @@ def test_customer_is_403_on_every_demo_endpoint_and_ledger(client):
     assert _audit_rows("FORBIDDEN") >= before + 1
 
 
-def test_support_can_read_but_not_write(client):
-    assert client.get(SCENARIOS_URL, headers=SUPPORT_KEY).status_code == 200
-    assert client.get(STATUS_URL, headers=SUPPORT_KEY).status_code == 200
+def test_support_cannot_access_demo_endpoints(client):
+    """Demo mode is admin-only — SUPPORT has no read or write access."""
+    assert client.get(SCENARIOS_URL, headers=SUPPORT_KEY).status_code == 403
+    assert client.get(STATUS_URL, headers=SUPPORT_KEY).status_code == 403
+    # Sandbox ledger remains SUPPORT-accessible (separate from demo)
     assert client.get(LEDGER_URL, headers=SUPPORT_KEY).status_code == 200
     assert client.post(PREPARE_URL.format(key="S1"), headers=SUPPORT_KEY).status_code == 403
     assert client.post(INJECT_URL.format(key="S5"), headers=SUPPORT_KEY).status_code == 403
@@ -311,7 +313,7 @@ def test_sandbox_ledger_endpoint(client):
 
 def test_scenarios_catalog_shape(client):
     _reset(client)
-    resp = client.get(SCENARIOS_URL, headers=SUPPORT_KEY)
+    resp = client.get(SCENARIOS_URL, headers=ADMIN_KEY)
     assert resp.status_code == 200
     body = resp.json()
     assert body["simulated"] is True

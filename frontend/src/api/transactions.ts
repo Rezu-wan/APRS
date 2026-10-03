@@ -36,6 +36,8 @@ export interface ListTransactionsParams {
   /** ISO datetimes — axios percent-encodes the "+" offset correctly. */
   date_from?: string;
   date_to?: string;
+  /** Text search query (transaction ID, user ID, merchant name). */
+  q?: string;
 }
 
 /**

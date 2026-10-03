@@ -11,9 +11,7 @@ const Dashboard = lazy(() => import("../pages/Dashboard"));
 const TransactionSearch = lazy(() => import("../pages/TransactionSearch"));
 const TransactionDetails = lazy(() => import("../pages/TransactionDetails"));
 const DemoMode = lazy(() => import("../pages/DemoMode"));
-const SystemStatus = lazy(() => import("../pages/SystemStatus"));
 const PolicySimulator = lazy(() => import("../pages/PolicySimulator"));
-const ChaosLab = lazy(() => import("../pages/ChaosLab"));
 const SupportOverview = lazy(() => import("../pages/support/SupportOverview"));
 const CustomerProfile = lazy(() => import("../pages/support/CustomerProfile"));
 const SupportTransaction = lazy(() => import("../pages/support/SupportTransaction"));
@@ -107,22 +105,6 @@ export function AppRoutes() {
           element={
             <LazyPage>
               <PolicySimulator />
-            </LazyPage>
-          }
-        />
-        <Route
-          path="/chaos"
-          element={
-            <LazyPage>
-              <ChaosLab />
-            </LazyPage>
-          }
-        />
-        <Route
-          path="/status"
-          element={
-            <LazyPage>
-              <SystemStatus />
             </LazyPage>
           }
         />

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, RefreshCcw, Search } from "lucide-react";
+import { ArrowRight, RefreshCcw, Search, Users, Settings, Wrench } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import {
   queryKeys,
@@ -202,6 +202,7 @@ function StateRow({ state, count, total }: { state: string; count: number; total
 export default function Dashboard() {
   const { user } = useAuth();
   const isCustomer = user?.role === "CUSTOMER";
+  const isSupport = user?.role === "SUPPORT";
 
   // Split by role BEFORE any query hook runs: customers never fire the
   // staff-only /stats/summary request (it 403s for them), and staff never
@@ -209,12 +210,14 @@ export default function Dashboard() {
   if (isCustomer) {
     return <CustomerDashboard />;
   }
-  return <StaffDashboard />;
+  if (isSupport) {
+    return <SupportDashboard />;
+  }
+  return <AdminDashboard />;
 }
 
-/** Staff platform overview — unchanged behavior; hooks live here so the
- * customer branch never triggers the staff-only stats query. */
-function StaffDashboard() {
+/** Admin/System platform overview — full platform statistics and metrics. */
+function AdminDashboard() {
   const stats = useStats();
 
   if (stats.isPending) {
@@ -459,6 +462,136 @@ function StaffDashboard() {
             </div>
           ))}
         </dl>
+      </section>
+
+      <section aria-labelledby="system-controls-heading">
+        <h2 id="system-controls-heading" className="text-sm font-semibold text-slate-900">
+          System Controls
+        </h2>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Link
+            to="/demo"
+            className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:border-indigo-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            <div className="flex items-start justify-between">
+              <Settings className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+              <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:text-indigo-600" aria-hidden="true" />
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-slate-900">Demo Mode</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Run demo scenarios, reset sandbox state, and control the demo environment.
+            </p>
+          </Link>
+
+          <Link
+            to="/stage11"
+            className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:border-indigo-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            <div className="flex items-start justify-between">
+              <Wrench className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+              <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:text-indigo-600" aria-hidden="true" />
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-slate-900">Sandbox Ledger</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              View sandbox provider ledger state and recovery execution history.
+            </p>
+          </Link>
+
+          <Link
+            to="/simulator"
+            className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:border-indigo-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            <div className="flex items-start justify-between">
+              <Search className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+              <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:text-indigo-600" aria-hidden="true" />
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-slate-900">Policy Simulator</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Test recovery policy rules and understand decision logic.
+            </p>
+          </Link>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/** Support dashboard — customer service focused view with quick access to support tools. */
+function SupportDashboard() {
+  return (
+    <div className="space-y-6">
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
+              Support Dashboard
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+              Customer support workspace — search customers, review transactions, and manage support cases.
+            </p>
+          </div>
+          <span className="inline-flex shrink-0 items-center self-start rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold tracking-wide text-amber-800 ring-1 ring-inset ring-amber-600/20">
+            SUPPORT WORKSPACE
+          </span>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Link
+          to="/support"
+          className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:border-indigo-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <div className="flex items-start justify-between">
+            <Users className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+            <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:text-indigo-600" aria-hidden="true" />
+          </div>
+          <h3 className="mt-4 text-lg font-semibold text-slate-900">Customer Support</h3>
+          <p className="mt-2 text-sm text-slate-600">
+            Search customers, view profiles, and manage support cases.
+          </p>
+        </Link>
+
+        <Link
+          to="/transactions"
+          className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:border-indigo-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <div className="flex items-start justify-between">
+            <RefreshCcw className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+            <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:text-indigo-600" aria-hidden="true" />
+          </div>
+          <h3 className="mt-4 text-lg font-semibold text-slate-900">Transactions</h3>
+          <p className="mt-2 text-sm text-slate-600">
+            Look up and review customer transactions and recovery status.
+          </p>
+        </Link>
+
+        <Link
+          to="/simulator"
+          className="group rounded-lg border border-slate-200 bg-white p-6 shadow-sm transition hover:border-indigo-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <div className="flex items-start justify-between">
+            <Search className="h-8 w-8 text-indigo-600" aria-hidden="true" />
+            <ArrowRight className="h-5 w-5 text-slate-400 transition group-hover:text-indigo-600" aria-hidden="true" />
+          </div>
+          <h3 className="mt-4 text-lg font-semibold text-slate-900">Policy Simulator</h3>
+          <p className="mt-2 text-sm text-slate-600">
+            Test recovery policy rules and understand decision logic.
+          </p>
+        </Link>
+      </div>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Quick Transaction Lookup</h2>
+        <QuickSearch />
+      </section>
+
+      <section className="rounded-lg border border-blue-100 bg-blue-50 p-6">
+        <h2 className="text-sm font-semibold text-blue-900">Support Resources</h2>
+        <ul className="mt-3 space-y-2 text-sm text-blue-800">
+          <li>• Use the <strong>Support</strong> tab to search customers and view their transaction history</li>
+          <li>• Use the <strong>Transactions</strong> tab to look up individual transactions by ID</li>
+          <li>• Use the <strong>Simulator</strong> to understand how recovery policies work</li>
+        </ul>
       </section>
     </div>
   );

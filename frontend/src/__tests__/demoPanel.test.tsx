@@ -99,7 +99,7 @@ describe("DemoMode (Demo Control Panel)", () => {
     expect(screen.queryByRole("button", { name: /reset demo/i })).not.toBeInTheDocument();
   });
 
-  it("shows Prepare enabled for SYSTEM but read-only note for SUPPORT", async () => {
+  it("denies access for SUPPORT role (demo is admin-only)", async () => {
     mockSixScenarios();
     renderWithProviders(
       <Routes>
@@ -108,11 +108,11 @@ describe("DemoMode (Demo Control Panel)", () => {
       { route: "/demo", authUser: { role: "SUPPORT", keyName: "support-key" } }
     );
 
-    expect(await screen.findByText("Hackathon demo mode")).toBeInTheDocument();
-    // No Prepare buttons for SUPPORT; explanatory line instead.
+    // SUPPORT sees access denied — demo is now admin-only
+    expect(await screen.findByText("Access denied")).toBeInTheDocument();
+    expect(screen.getByText("Your role does not have permission to view this content.")).toBeInTheDocument();
+    expect(screen.queryByText("Hackathon demo mode")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Prepare" })).not.toBeInTheDocument();
-    expect(screen.getByText(/require the SYSTEM or ADMIN role/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /reset demo/i })).not.toBeInTheDocument();
   });
 
   it("requires confirmation for reset: Cancel does not call the API", async () => {

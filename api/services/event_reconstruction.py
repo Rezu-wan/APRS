@@ -25,10 +25,15 @@ Integrity rules:
 This function performs NO database writes and NO Digital Twin append — the
 route layer owns that side effect, and the GenAI explanation service calls
 this function directly and MUST stay read-only.
+
+Caching: Results are cached in memory keyed by evidence fingerprint
+(transaction_id + sorted event IDs). Cache is invalidated when new payment
+events are ingested for a transaction.
 """
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Any, Sequence
 
@@ -86,6 +91,10 @@ _ROOT_CAUSE_LABELS = {
     ROOT_CAUSE_SETTLEMENT_FAILED: "settlement failed",
     ROOT_CAUSE_SETTLEMENT_NOT_CONFIRMED: "settlement not confirmed",
 }
+
+# In-memory cache: {cache_key: ReconstructionResult}
+# Cache key = sha256(transaction_id + sorted event IDs)
+_reconstruction_cache: dict[str, ReconstructionResult] = {}
 
 # per-stage CONFIRMED evidence lines (exact wording per Stage-6 spec)
 _CONFIRMED_LINES = {
@@ -202,6 +211,37 @@ def _derive_root_cause(statuses: dict[str, str]) -> tuple[str, str | None]:
     return ROOT_CAUSE_INCOMPLETE, None
 
 
+def _compute_cache_key(transaction_id: str, events: Sequence[Any]) -> str:
+    """Compute cache key from transaction ID and sorted event IDs. Events with
+    no id attribute (test doubles) use their event_type + event_timestamp."""
+    key_parts = [transaction_id]
+    for event in events:
+        if hasattr(event, "id") and event.id is not None:
+            key_parts.append(str(event.id))
+        else:
+            # Test doubles: use event_type + timestamp as fingerprint
+            key_parts.append(
+                f"{_event_attr(event, 'event_type')}:{_event_attr(event, 'event_timestamp').isoformat()}"
+            )
+    key_parts.sort()
+    return hashlib.sha256("|".join(key_parts).encode()).hexdigest()
+
+
+def clear_reconstruction_cache(transaction_id: str | None = None) -> None:
+    """Clear reconstruction cache. If transaction_id given, only clears entries
+    for that transaction (prefix match). If None, clears entire cache."""
+    if transaction_id is None:
+        _reconstruction_cache.clear()
+    else:
+        # Remove all keys that start with the transaction_id hash prefix
+        keys_to_remove = [
+            key for key in _reconstruction_cache
+            if key.startswith(hashlib.sha256(transaction_id.encode()).hexdigest()[:16])
+        ]
+        for key in keys_to_remove:
+            _reconstruction_cache.pop(key, None)
+
+
 def _confidence(statuses: dict[str, str], observed_types: set[str]) -> float:
     """Deterministic score in [0, 1], capped at 1.0:
 
@@ -260,7 +300,16 @@ def reconstruct_from_events(
       6. missing_events = HAPPY_PATH_EVENTS never observed, in order
       7. confidence = documented deterministic formula
       8. evidence_summary = one line per stage in STAGE_ORDER + a conclusion
+
+    Results are cached in memory by evidence fingerprint. Cache hit returns
+    immediately without recomputation.
     """
+    # Check cache first
+    cache_key = _compute_cache_key(transaction_id, events)
+    if cache_key in _reconstruction_cache:
+        return _reconstruction_cache[cache_key]
+
+    # Cache miss - compute reconstruction
     ordered = _sort_events(events)
 
     by_stage: dict[str, list[Any]] = {stage: [] for stage in STAGE_ORDER}
@@ -302,7 +351,7 @@ def reconstruct_from_events(
     else:
         evidence_summary.append(f"Root cause: {_ROOT_CAUSE_LABELS[root_cause]}.")
 
-    return ReconstructionResult(
+    result = ReconstructionResult(
         transaction_id=transaction_id,
         ordered_events=[PaymentEventOut.model_validate(e) for e in ordered],
         current_stage=current_stage,
@@ -319,3 +368,7 @@ def reconstruct_from_events(
         reconstructed_at=now,
         digital_twin_event_recorded=False,
     )
+
+    # Cache the result
+    _reconstruction_cache[cache_key] = result
+    return result

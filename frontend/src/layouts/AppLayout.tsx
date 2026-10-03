@@ -1,30 +1,24 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import {
-  Activity,
   FlaskConical,
   Info,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
   Menu,
-  Presentation,
   RefreshCcw,
   Scale,
   X,
-  Zap,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { JudgeModeProvider, useJudgeMode } from "../context/JudgeModeContext";
 
 const NAV_ITEMS = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, staffOnly: false },
   { to: "/transactions", label: "Transactions", icon: RefreshCcw, staffOnly: false },
   { to: "/support", label: "Support", icon: LifeBuoy, staffOnly: true },
-  { to: "/demo", label: "Demo", icon: FlaskConical, staffOnly: true },
-  { to: "/status", label: "Status", icon: Activity, staffOnly: true },
+  { to: "/demo", label: "Demo", icon: FlaskConical, adminOnly: true },
   { to: "/simulator", label: "Simulator", icon: Scale, staffOnly: true },
-  { to: "/chaos", label: "Chaos Lab", icon: Zap, staffOnly: true },
 ];
 
 const ROLE_CHIP_STYLES: Record<string, string> = {
@@ -47,26 +41,6 @@ function SandboxBanner() {
   );
 }
 
-function JudgeModeToggle() {
-  const { judgeMode, toggle } = useJudgeMode();
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-pressed={judgeMode}
-      title="Presentation mode: enlarges key status displays"
-      className={`flex items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-        judgeMode
-          ? "bg-indigo-100 text-indigo-700"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
-    >
-      <Presentation aria-hidden="true" className="h-4 w-4" />
-      <span className="hidden lg:inline">Judge mode</span>
-    </button>
-  );
-}
-
 export function AppLayout() {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -76,15 +50,13 @@ export function AppLayout() {
   const isStaff = user.role !== "CUSTOMER";
 
   return (
-    <JudgeModeProvider>
-      <LayoutShell
-        isStaff={isStaff}
-        role={user.role}
-        mobileOpen={mobileOpen}
-        setMobileOpen={setMobileOpen}
-        logout={logout}
-      />
-    </JudgeModeProvider>
+    <LayoutShell
+      isStaff={isStaff}
+      role={user.role}
+      mobileOpen={mobileOpen}
+      setMobileOpen={setMobileOpen}
+      logout={logout}
+    />
   );
 }
 
@@ -101,11 +73,15 @@ function LayoutShell({
   setMobileOpen: (updater: (open: boolean) => boolean) => void;
   logout: () => void;
 }) {
-  const { judgeMode } = useJudgeMode();
-  const navItems = NAV_ITEMS.filter((item) => !item.staffOnly || isStaff);
+  const isAdmin = role === "SYSTEM" || role === "ADMIN";
+  const navItems = NAV_ITEMS.filter((item) => {
+    if (item.adminOnly) return isAdmin;
+    if (item.staffOnly) return isStaff;
+    return true;
+  });
 
   return (
-    <div className={`min-h-screen bg-slate-50${judgeMode ? " judge-mode" : ""}`}>
+    <div className="min-h-screen bg-slate-50">
       <SandboxBanner />
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
@@ -151,7 +127,6 @@ function LayoutShell({
           </nav>
 
           <div className="flex items-center gap-3">
-            {isStaff && <JudgeModeToggle />}
             <span
               className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${
                 ROLE_CHIP_STYLES[role] ?? ROLE_CHIP_STYLES.CUSTOMER

@@ -66,6 +66,17 @@ export interface DemoStatusResponse {
     held_entries: number;
     released_entries: number;
   };
+  dataset: {
+    synthetic: boolean;
+    seed: number;
+    generated_at: string;
+    window: {
+      start: string;
+      end: string;
+    };
+    counts: Record<string, number>;
+    note: string;
+  } | null;
 }
 
 export interface SandboxLedgerEntry {
@@ -155,6 +166,17 @@ export const demoStatusResponseSchema = z.object({
     held_entries: z.number(),
     released_entries: z.number(),
   }),
+  dataset: z.object({
+    synthetic: z.boolean(),
+    seed: z.number(),
+    generated_at: z.string(),
+    window: z.object({
+      start: z.string(),
+      end: z.string(),
+    }),
+    counts: z.record(z.number()),
+    note: z.string(),
+  }).nullable(),
 });
 
 const sandboxLedgerEntrySchema = z.object({
@@ -191,13 +213,13 @@ export const demoPrepareResponseSchema = z.object({
 // Endpoints
 // ---------------------------------------------------------------------------
 
-/** GET /demo/scenarios — SYSTEM/ADMIN/SUPPORT. */
+/** GET /demo/scenarios — SYSTEM/ADMIN. */
 export async function getDemoScenarios(): Promise<DemoScenariosResponse> {
   const data = await get<unknown>("/demo/scenarios");
   return demoScenariosResponseSchema.parse(data);
 }
 
-/** GET /demo/status — SYSTEM/ADMIN/SUPPORT. Console health block. */
+/** GET /demo/status — SYSTEM/ADMIN. Console health block with dataset metadata. */
 export async function getDemoStatus(): Promise<DemoStatusResponse> {
   const data = await get<unknown>("/demo/status");
   return demoStatusResponseSchema.parse(data);

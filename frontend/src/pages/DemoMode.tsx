@@ -255,7 +255,7 @@ function DemoPanel() {
 
 export default function DemoMode() {
   return (
-    <RoleGate allowed={["SYSTEM", "ADMIN", "SUPPORT"]}>
+    <RoleGate allowed={["SYSTEM", "ADMIN"]}>
       <DemoPanel />
     </RoleGate>
   );

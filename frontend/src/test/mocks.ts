@@ -598,6 +598,7 @@ function defaultDemoStatus(): Promise<import("../api/demo").DemoStatusResponse> 
       held_entries: 0,
       released_entries: 0,
     },
+    dataset: null,
   });
 }
 

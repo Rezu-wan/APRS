@@ -7,7 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from api.core.exceptions import ForbiddenError, NotFoundError
@@ -73,11 +73,12 @@ def list_transactions(
     state: str | None = Query(default=None, max_length=32),
     date_from: datetime | None = Query(default=None),
     date_to: datetime | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=200, description="Search query (transaction ID, user ID, merchant name)"),
     db: Session = Depends(get_db),
     auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT", "CUSTOMER")),
 ):
-    """List transactions, newest first, with optional state / date-range
-    filters (same scoping rules as the summary endpoint)."""
+    """List transactions, newest first, with optional state / date-range /
+    text-search filters (same scoping rules as the summary endpoint)."""
     query = _scoped_transactions(db, auth, user_id)
     if state is not None:
         if state not in ALL_STATES:
@@ -97,6 +98,20 @@ def list_transactions(
         query = query.filter(Transaction.timestamp >= date_from)
     if date_to is not None:
         query = query.filter(Transaction.timestamp <= date_to)
+    if q:
+        # Server-side text search across transaction ID, user ID, merchant ID,
+        # and merchant name (via LEFT JOIN). Case-insensitive (ilike for
+        # PostgreSQL, like with lower() fallback for SQLite).
+        search_pattern = f"%{q}%"
+        query = query.outerjoin(Merchant, Transaction.merchant_id == Merchant.merchant_id)
+        query = query.filter(
+            or_(
+                Transaction.id.ilike(search_pattern),
+                Transaction.user_id.ilike(search_pattern),
+                Transaction.merchant_id.ilike(search_pattern),
+                Merchant.name.ilike(search_pattern),
+            )
+        )
     total = query.count()
     items = (
         query.order_by(Transaction.timestamp.desc(), Transaction.id.desc())

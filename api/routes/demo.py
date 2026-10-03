@@ -141,10 +141,9 @@ def _audit_seed(
 @router.get("/scenarios")
 def list_scenarios(
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT")),
+    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN")),
 ):
-    """Demo scenario catalog with live DB state per scenario. Read-only;
-    SUPPORT-visible so presenters can check status without write rights."""
+    """Demo scenario catalog with live DB state per scenario. Admin-only."""
     return {
         "simulated": True,
         "note": SANDBOX_NOTE,
@@ -155,10 +154,10 @@ def list_scenarios(
 @router.get("/status")
 def demo_status(
     db: Session = Depends(get_db),
-    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN", "SUPPORT")),
+    auth: AuthContext = Depends(require_roles("SYSTEM", "ADMIN")),
 ):
-    """SANDBOX health snapshot for the demo UI. No network calls — the GenAI
-    status is derived from configuration only."""
+    """SANDBOX health snapshot for the demo UI, plus dataset metadata. No network
+    calls — the GenAI status is derived from configuration only."""
     settings = get_settings()
     try:
         db.execute(text("SELECT 1"))
@@ -182,6 +181,27 @@ def demo_status(
         if isinstance(provider, MockPaymentProvider)
         else []
     )
+
+    # Dataset metadata from manifest.json
+    dataset_info = None
+    try:
+        import json
+        import pathlib
+        manifest_path = pathlib.Path("data/dataset/manifest.json")
+        if manifest_path.exists():
+            with manifest_path.open() as f:
+                manifest = json.load(f)
+            dataset_info = {
+                "synthetic": manifest.get("synthetic", True),
+                "seed": manifest.get("seed"),
+                "generated_at": manifest.get("generated_at"),
+                "window": manifest.get("window"),
+                "counts": manifest.get("counts"),
+                "note": manifest.get("note"),
+            }
+    except Exception:  # noqa: BLE001 — dataset metadata is optional
+        pass
+
     return {
         "simulated": True,
         "note": SANDBOX_NOTE,
@@ -202,6 +222,7 @@ def demo_status(
                 1 for e in entries if e.get("status") == "RELEASED"
             ),
         },
+        "dataset": dataset_info,
     }
 
 

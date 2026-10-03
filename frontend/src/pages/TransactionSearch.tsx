@@ -21,12 +21,245 @@ const searchSchema = z
 export default function TransactionSearch() {
   const { user } = useAuth();
   const isCustomer = user?.role === "CUSTOMER";
+  const isStaff = user?.role === "SUPPORT" || user?.role === "ADMIN" || user?.role === "SYSTEM";
+
   // Customers get their own transaction list (role-scoped server-side);
-  // staff keep the exact-ID lookup form.
+  // staff get server-side search with filters.
   if (isCustomer) {
     return <CustomerTransactionList />;
   }
+  if (isStaff) {
+    return <StaffTransactionSearch />;
+  }
   return <StaffIdLookup />;
+}
+
+function StaffTransactionSearch() {
+  const queryClient = useQueryClient();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [dayFrom, setDayFrom] = useState("");
+  const [dayTo, setDayTo] = useState("");
+  const [offset, setOffset] = useState(0);
+
+  // Server-side search and filters
+  const boundsFrom = dayBounds(dayFrom).from;
+  const boundsTo = dayBounds(dayTo).to;
+
+  const listQuery = useTransactionList({
+    limit: PAGE_SIZE,
+    offset,
+    state: statusFilter || undefined,
+    date_from: boundsFrom,
+    date_to: boundsTo,
+    q: searchQuery.trim() || undefined,
+  });
+
+  const totalPages = listQuery.data ? Math.ceil(listQuery.data.total / PAGE_SIZE) : 0;
+  const currentPage = Math.floor(offset / PAGE_SIZE) + 1;
+
+  function handleSearch(event: FormEvent) {
+    event.preventDefault();
+    setOffset(0); // Reset to first page on new search
+  }
+
+  function handleRefresh() {
+    void queryClient.invalidateQueries({ queryKey: ["transactions"] });
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-slate-900">Transaction Search</h1>
+        <button
+          type="button"
+          onClick={handleRefresh}
+          className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+        >
+          <RefreshCcw aria-hidden="true" className="h-4 w-4" />
+          Refresh
+        </button>
+      </div>
+
+      <form onSubmit={handleSearch} className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label htmlFor="staff-search-query" className="block text-sm font-medium text-slate-700">
+              Search
+            </label>
+            <div className="relative mt-1">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+              />
+              <input
+                id="staff-search-query"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="ID, user, merchant..."
+                className="w-full rounded-md border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="staff-status-filter" className="block text-sm font-medium text-slate-700">
+              Status
+            </label>
+            <select
+              id="staff-status-filter"
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setOffset(0);
+              }}
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white py-2 pl-3 pr-10 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            >
+              <option value="">All statuses</option>
+              {STATE_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="staff-date-from" className="block text-sm font-medium text-slate-700">
+              From date
+            </label>
+            <input
+              id="staff-date-from"
+              type="date"
+              value={dayFrom}
+              onChange={(e) => {
+                setDayFrom(e.target.value);
+                setOffset(0);
+              }}
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="staff-date-to" className="block text-sm font-medium text-slate-700">
+              To date
+            </label>
+            <input
+              id="staff-date-to"
+              type="date"
+              value={dayTo}
+              onChange={(e) => {
+                setDayTo(e.target.value);
+                setOffset(0);
+              }}
+              className="mt-1 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            />
+          </div>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            Search
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchQuery("");
+              setStatusFilter("");
+              setDayFrom("");
+              setDayTo("");
+              setOffset(0);
+            }}
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            Clear
+          </button>
+        </div>
+      </form>
+
+      {listQuery.isPending ? (
+        <div className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <p className="text-sm text-slate-500">Loading transactions...</p>
+        </div>
+      ) : listQuery.isError ? (
+        <ErrorState
+          message={
+            listQuery.error instanceof ApiError
+              ? listQuery.error.message
+              : "Failed to load transactions."
+          }
+          onRetry={() => void listQuery.refetch()}
+        />
+      ) : !listQuery.data.items.length ? (
+        <EmptyState
+          title="No transactions found"
+          message="Try adjusting your search criteria or filters."
+        />
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <ul className="divide-y divide-slate-100">
+              {listQuery.data.items.map((tx) => (
+                <li key={tx.transaction_id}>
+                  <Link
+                    to={`/transactions/${encodeURIComponent(tx.transaction_id)}`}
+                    className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 sm:px-6"
+                  >
+                    <StatusBadge state={tx.current_state} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-slate-900">
+                        {tx.merchant_name ?? (tx.merchant_id || "No merchant")}
+                        {tx.merchant_category ? (
+                          <span className="text-slate-400"> · {tx.merchant_category}</span>
+                        ) : null}
+                      </span>
+                      <span className="block truncate font-mono text-xs text-slate-500">
+                        {tx.transaction_id} · {formatDate(tx.timestamp)}
+                        {tx.failure_reason ? ` · ${tx.failure_reason}` : ""}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-sm font-medium tabular-nums text-slate-900">
+                      {formatAmount(tx.amount, tx.currency)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
+            <p className="text-xs text-slate-500">
+              Page {currentPage} of {totalPages} ({listQuery.data.total.toLocaleString()} total)
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setOffset((prev) => Math.max(0, prev - PAGE_SIZE))}
+                disabled={currentPage <= 1}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              >
+                <ChevronLeft aria-hidden="true" className="h-4 w-4" />
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setOffset((prev) => prev + PAGE_SIZE)}
+                disabled={currentPage >= totalPages}
+                className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+              >
+                Next
+                <ChevronRight aria-hidden="true" className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function StaffIdLookup() {
