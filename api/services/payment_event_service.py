@@ -42,6 +42,10 @@ from api.core.exceptions import ConflictError, NotFoundError
 from api.core.payment_lifecycle import EVENT_TYPE_INFO
 from api.db.models import DigitalTwinEvent, PaymentEvent, Transaction
 from api.services.digital_twin import append_event
+from api.services.metrics import (
+    METRICS_PAYMENT_EVENTS_TOTAL,
+    record_counter,
+)
 from api.services.transaction_service import get_transaction
 
 logger = logging.getLogger("payment_recovery.payment_events")
@@ -222,6 +226,10 @@ def ingest_events(db: Session, transaction_id: str, payloads: list) -> dict:
             reference_id=p.reference_id,
             latency_ms=p.latency_ms,
             event_metadata=p.metadata,
+            # Stage 11A correlation columns
+            correlation_id=transaction_id,
+            causation_id=None,  # provider-observed: no internal cause
+            schema_version="1",
         )
         db.add(event)
         try:
@@ -241,6 +249,9 @@ def ingest_events(db: Session, transaction_id: str, payloads: list) -> dict:
     db.commit()
     for e in created:
         db.refresh(e)
+    _publish_created_events(created)
+    if created:  # Stage 11G: new events only, never replays
+        record_counter(METRICS_PAYMENT_EVENTS_TOTAL, float(len(created)))
     logger.info(
         "payment events ingested: tx=%s created=%d duplicates=%d",
         transaction_id, len(created), duplicates,
@@ -251,6 +262,46 @@ def ingest_events(db: Session, transaction_id: str, payloads: list) -> dict:
         "duplicates": duplicates,
         "events": [_event_out(e) for e in created],
     }
+
+
+def _publish_created_events(created: list[PaymentEvent]) -> None:
+    """Stage 11A: announce successfully ingested (new, non-duplicate) events
+    on the in-process event bus. BEST-EFFORT by contract — the bus must never
+    break ingestion, so any failure here is logged and swallowed. The payload
+    carries no sensitive data (no amounts beyond the event, no user ids)."""
+    if not created:
+        return
+    try:
+        from api.services.eventbus import EventEnvelope, get_event_bus
+
+        bus = get_event_bus()
+        for e in created:
+            ts = e.event_timestamp
+            # SQLite returns naive datetimes; the envelope contract requires
+            # tz-aware domain time — interpret naive as UTC
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            bus.publish(
+                EventEnvelope(
+                    transaction_id=e.transaction_id,
+                    event_type=e.event_type,
+                    event_timestamp=ts,
+                    source=e.source,
+                    payload={
+                        "status": e.status,
+                        "latency_ms": e.latency_ms,
+                        "reference_id": e.reference_id,
+                    },
+                    provider_event_id=e.provider_event_id,
+                    correlation_id=e.correlation_id or e.transaction_id,
+                    causation_id=e.causation_id,
+                )
+            )
+    except Exception:  # noqa: BLE001 — publishing is best-effort
+        logger.warning(
+            "event bus publish failed after ingestion (non-fatal): tx=%s",
+            created[0].transaction_id,
+        )
 
 
 def get_payment_events(db: Session, transaction_id: str) -> list[PaymentEvent]:

@@ -23,3 +23,10 @@ data/test*.db
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Claude Code session memory (local only — contains machine-specific notes)
+/memory/
+
+# db-branch dataset (lives on origin/db) + temp dataset DB
+/data/dataset/
+/data/test_dataset.db

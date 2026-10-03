@@ -240,8 +240,10 @@ export interface ReconstructionResult {
   transaction_id: string;
   ordered_events: PaymentEventOut[];
   current_stage: ReconstructionStage;
-  last_successful_stage: ReconstructionStage;
-  failure_stage: ReconstructionStage;
+  /** Null when no stage has CONFIRMED evidence (e.g. sparse evidence). */
+  last_successful_stage: ReconstructionStage | null;
+  /** Null when the chain contains no failure (success / sparse cases). */
+  failure_stage: ReconstructionStage | null;
   root_cause: string;
   customer_debit_status: ReconstructionEventStatus;
   gateway_status: ReconstructionEventStatus;
@@ -485,7 +487,8 @@ export interface RecoveryRecord {
   requested_amount: string;
   released_amount: string | null;
   currency: string;
-  provider: string;
+  /** Null when the provider was never called (blocked/pending rows). */
+  provider: string | null;
   provider_reference: string | null;
   policy_version: string;
   created_at: string;
@@ -562,6 +565,12 @@ export const recoveryEvaluateResultSchema = z.object({
   assessment: recoveryAssessmentSummarySchema,
 });
 
+// The GET …/recovery endpoint serializes amounts as NUMBERS (float, from the
+// Numeric column) and provider is null whenever the provider was never
+// called (blocked/pending rows). Amounts are normalized to strings here so
+// every consumer keeps working with the display formatters.
+const amountLike = z.union([z.string(), z.number()]).transform(String);
+
 export const recoveryRecordSchema = z.object({
   transaction_id: z.string(),
   action: recoveryActionSchema,
@@ -570,10 +579,10 @@ export const recoveryRecordSchema = z.object({
   decision_reason: z.string().nullable(),
   blocked_reason: z.string().nullable(),
   failure_reason: z.string().nullable(),
-  requested_amount: z.string(),
-  released_amount: z.string().nullable(),
+  requested_amount: amountLike,
+  released_amount: amountLike.nullable(),
   currency: z.string(),
-  provider: z.string(),
+  provider: z.string().nullable(),
   provider_reference: z.string().nullable(),
   policy_version: z.string(),
   created_at: z.string(),
@@ -622,8 +631,11 @@ export const reconstructionResultSchema = z.object({
   transaction_id: z.string(),
   ordered_events: z.array(paymentEventOutSchema),
   current_stage: reconstructionStageSchema,
-  last_successful_stage: reconstructionStageSchema,
-  failure_stage: reconstructionStageSchema,
+  // The backend emits null for last_successful_stage when nothing is
+  // CONFIRMED and for failure_stage when the chain has no failure
+  // (success / sparse-evidence cases) — both are honest unknowns.
+  last_successful_stage: reconstructionStageSchema.nullable(),
+  failure_stage: reconstructionStageSchema.nullable(),
   root_cause: z.string(),
   customer_debit_status: paymentEventOutSchema.shape.status,
   gateway_status: paymentEventOutSchema.shape.status,

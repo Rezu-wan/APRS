@@ -1,6 +1,7 @@
 import { Lock, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useReleaseLimit } from "../../hooks/useMutations";
+import { useRecovery } from "../../hooks/useQueries";
 import { ApiError } from "../../api/client";
 import type { Transaction } from "../../types/api";
 
@@ -33,9 +34,13 @@ function Loader() {
 export function RecoveryCard({ transaction }: { transaction: Transaction }) {
   const { user } = useAuth();
   const release = useReleaseLimit(transaction.transaction_id);
+  // Stage 11 polish: when an autonomous recovery row exists, the manual
+  // release path is superseded — hide the button so judges see ONE authority.
+  const autonomous = useRecovery(transaction.transaction_id);
 
   const canDecide = user?.role === "SYSTEM" || user?.role === "ADMIN";
   const isPending = transaction.current_state === "RECOVERY_PENDING";
+  const superseded = autonomous.data !== null && autonomous.data !== undefined;
   const decision = release.data;
   const error = release.error;
 
@@ -91,7 +96,15 @@ export function RecoveryCard({ transaction }: { transaction: Transaction }) {
         </div>
       )}
 
-      {canDecide && isPending && (
+      {canDecide && isPending && superseded && (
+        <p className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-500">
+          <Lock aria-hidden="true" className="h-3.5 w-3.5" />
+          An autonomous recovery decision exists — the manual release path is
+          superseded (see the Autonomous recovery panel).
+        </p>
+      )}
+
+      {canDecide && isPending && !superseded && (
         <div className="mt-4">
           <button
             type="button"

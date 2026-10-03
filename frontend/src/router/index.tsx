@@ -11,6 +11,8 @@ const TransactionSearch = lazy(() => import("../pages/TransactionSearch"));
 const TransactionDetails = lazy(() => import("../pages/TransactionDetails"));
 const DemoMode = lazy(() => import("../pages/DemoMode"));
 const SystemStatus = lazy(() => import("../pages/SystemStatus"));
+const PolicySimulator = lazy(() => import("../pages/PolicySimulator"));
+const ChaosLab = lazy(() => import("../pages/ChaosLab"));
 
 function LazyPage({ children }: { children: ReactNode }) {
   return (
@@ -59,6 +61,22 @@ export function AppRoutes() {
           element={
             <LazyPage>
               <DemoMode />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="/simulator"
+          element={
+            <LazyPage>
+              <PolicySimulator />
+            </LazyPage>
+          }
+        />
+        <Route
+          path="/chaos"
+          element={
+            <LazyPage>
+              <ChaosLab />
             </LazyPage>
           }
         />

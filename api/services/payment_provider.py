@@ -171,6 +171,7 @@ class MockPaymentProvider(PaymentProvider):
         with self._lock:
             self._ledger: dict[str, dict] = {}
             self._processed_keys: dict[str, ProviderResult] = {}
+            self._keys_by_tid: dict[str, set[str]] = {}
             self._available_limit = self.INITIAL_LIMIT
             self._failure_mode: str | None = None
 
@@ -320,6 +321,9 @@ class MockPaymentProvider(PaymentProvider):
                 currency=currency,
             )
             self._processed_keys[idempotency_key] = result
+            self._keys_by_tid.setdefault(transaction_id, set()).add(
+                idempotency_key
+            )
             return result
 
     def get_ledger_entry(self, transaction_id: str) -> dict | None:
@@ -336,6 +340,31 @@ class MockPaymentProvider(PaymentProvider):
         contract real providers would have to satisfy."""
         with self._lock:
             return [dict(entry) for entry in self._ledger.values()]
+
+    def purge_transactions(self, transaction_ids: list[str]) -> int:
+        """Chaos/demo cleanup hook (mock class only, NOT the ABC — same
+        precedent as ledger_snapshot): remove the given transactions' SIMULATED
+        ledger entries and restore their unreleased hold to the available
+        limit, so fixture reruns don't permanently drain the 10k sandbox limit.
+        Also drops the provider-level idempotency replay results for those
+        transactions (tracked via _keys_by_tid): a purged transaction's DB
+        rows are gone, so a stale replayed ProviderResult would otherwise be
+        returned against a fresh hold and fail verification. Returns the
+        number of entries removed."""
+        removed = 0
+        with self._lock:
+            for tid in transaction_ids:
+                entry = self._ledger.pop(tid, None)
+                if entry is None:
+                    continue
+                self._available_limit += (
+                    float(entry.get("held_amount") or 0)
+                    - float(entry.get("released_amount") or 0)
+                )
+                for key in self._keys_by_tid.pop(tid, set()):
+                    self._processed_keys.pop(key, None)
+                removed += 1
+        return removed
 
     @property
     def available_limit(self) -> float:

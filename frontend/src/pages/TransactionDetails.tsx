@@ -15,6 +15,9 @@ import { SandboxLedgerCard } from "../components/sandbox/SandboxLedgerCard";
 import { ReconstructionPanel } from "../components/reconstruction/ReconstructionPanel";
 import { AutonomousRecoveryPanel } from "../components/recovery/AutonomousRecoveryPanel";
 import { RiskAssessmentPanel } from "../components/risk/RiskAssessmentPanel";
+import { TemporalPanel } from "../components/stage11/TemporalPanel";
+import { BehavioralSignalsPanel } from "../components/stage11/BehavioralSignalsPanel";
+import { RelationshipsPanel } from "../components/stage11/RelationshipsPanel";
 import { Timeline } from "../components/timeline/Timeline";
 import { ExplanationCard } from "../components/explanation/ExplanationCard";
 
@@ -124,6 +127,10 @@ export default function TransactionDetails() {
             <h2 id="model-assessment-heading" className="text-sm font-semibold text-slate-900">
               Model assessment
             </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Stage-2 model snapshot (advisory) — decisions are driven by the Stage-7
+              hybrid risk assessment further down this page.
+            </p>
             <p className="mt-3 text-sm text-slate-600">
               Failure prediction:{" "}
               <span className="font-medium text-slate-900">
@@ -186,6 +193,12 @@ export default function TransactionDetails() {
 
       {/* Hybrid risk assessment — all roles; CUSTOMER gets a muted 403 line */}
       <RiskAssessmentPanel transactionId={transaction.transaction_id} />
+
+      {/* Stage 11 intelligence — temporal twin, behavioral + relationship signals.
+          All staff-facing reads; CUSTOMER sees muted 403 lines. */}
+      <TemporalPanel transactionId={transaction.transaction_id} />
+      <BehavioralSignalsPanel transactionId={transaction.transaction_id} />
+      <RelationshipsPanel transactionId={transaction.transaction_id} />
 
       {/* Explanation — all roles; the card locks CUSTOMER to Bangla + customer audience */}
       <ExplanationCard transactionId={transaction.transaction_id} />

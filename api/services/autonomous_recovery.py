@@ -25,6 +25,7 @@ recomputed, reused=False).
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -44,6 +45,15 @@ from api.schemas.recovery_autonomous import (
 )
 from api.services.digital_twin import append_event
 from api.services.event_reconstruction import reconstruct_from_events
+from api.services.metrics import (
+    METRICS_MANUAL_REVIEW_TOTAL,
+    METRICS_RECOVERY_BLOCKED_TOTAL,
+    METRICS_RECOVERY_FAILED_TOTAL,
+    METRICS_RECOVERY_LATENCY,
+    METRICS_RECOVERY_SUCCESS_TOTAL,
+    record_counter,
+    record_latency,
+)
 from api.services.payment_event_service import get_payment_events
 from api.services.recovery_decision_policy import decide
 from api.services.recovery_executor import (
@@ -102,6 +112,28 @@ def process_transaction(
     write as it went).
     """
     now = datetime.now(timezone.utc)
+    _t0 = time.perf_counter()
+
+    def _finish(response: dict) -> dict:
+        """Stage 11G outcome counters, service-side so EVERY caller (route,
+        demo prepare, chaos) is counted. Replays (ALREADY_RECOVERED) are not
+        new attempts; a FAILED row is a provider/verification failure, any
+        other non-eligible outcome is a blocked recovery."""
+        decision = response.get("decision")
+        if decision == DECISION_AUTO_RECOVERED:
+            record_counter(METRICS_RECOVERY_SUCCESS_TOTAL)
+        elif decision == DECISION_MANUAL_REVIEW_QUEUED:
+            record_counter(METRICS_MANUAL_REVIEW_TOTAL)
+        elif decision == DECISION_BLOCKED:
+            if response.get("status") == "FAILED":
+                record_counter(METRICS_RECOVERY_FAILED_TOTAL)
+            else:
+                record_counter(METRICS_RECOVERY_BLOCKED_TOTAL)
+        record_latency(
+            METRICS_RECOVERY_LATENCY, (time.perf_counter() - _t0) * 1000
+        )
+        return response
+
     tx = get_transaction(db, transaction_id)
     if tx is None:
         raise NotFoundError(f"transaction {transaction_id} not found")
@@ -153,10 +185,10 @@ def process_transaction(
             policy_version=decision.policy_version,
             risk_assessment_id=decision.risk_assessment_id,
         )
-        return _response(
+        return _finish(_response(
             tx, decision, row, response_decision,
             assessment, twin_recorded,
-        )
+        ))
 
     # ---- not eligible: persist a BLOCKED row (idempotent by key) ----------
     key = compute_idempotency_key(
@@ -215,9 +247,9 @@ def process_transaction(
         policy_version=decision.policy_version,
         risk_assessment_id=decision.risk_assessment_id,
     )
-    return _response(
+    return _finish(_response(
         tx, decision, row, response_decision, assessment, twin_recorded
-    )
+    ))
 
 
 def _queue_manual_review(

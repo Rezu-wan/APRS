@@ -20,6 +20,11 @@ export const queryKeys = {
   demoScenarios: ["demo", "scenarios"] as const,
   demoStatus: ["demo", "status"] as const,
   sandboxLedger: ["sandbox", "ledger"] as const,
+  // Stage 11 research/ops (see hooks/useStage11.ts)
+  temporalState: (id: string, ts: string) => ["temporal", id, ts] as const,
+  behavioral: (id: string) => ["behavioral", id] as const,
+  relationships: (id: string) => ["relationships", id] as const,
+  chaosScenarios: ["chaos", "scenarios"] as const,
 };
 
 export function useStats() {

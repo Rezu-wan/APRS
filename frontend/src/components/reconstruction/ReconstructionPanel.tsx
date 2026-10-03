@@ -275,13 +275,15 @@ function ReconstructionBody({ result }: { result: ReconstructionResult }) {
         <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Root cause</h3>
         <p className="mt-1 text-sm font-semibold text-slate-900">{humanizeRootCause(result.root_cause)}</p>
         <dl className="mt-2 space-y-1 text-sm text-slate-600">
-          {result.last_successful_stage !== "UNAVAILABLE" && (
+          {result.last_successful_stage !== null &&
+            result.last_successful_stage !== "UNAVAILABLE" && (
             <div className="flex gap-2">
               <dt className="text-slate-500">Last successful stage:</dt>
               <dd className="font-medium text-slate-800">{STAGE_LABELS[result.last_successful_stage as ReconstructionStage] ?? result.last_successful_stage}</dd>
             </div>
           )}
-          {result.failure_stage !== "UNAVAILABLE" && (
+          {result.failure_stage !== null &&
+            result.failure_stage !== "UNAVAILABLE" && (
             <div className="flex gap-2">
               <dt className="text-slate-500">Failed stage:</dt>
               <dd className="font-medium text-slate-800">{STAGE_LABELS[result.failure_stage as ReconstructionStage] ?? result.failure_stage}</dd>

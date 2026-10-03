@@ -19,6 +19,7 @@ contract below is the seam.
 
 from __future__ import annotations
 
+import logging
 import re
 import threading
 import time
@@ -29,6 +30,20 @@ from fastapi.responses import JSONResponse
 
 from api.core.config import get_settings
 from api.core.request_context import new_request_id, set_request_id
+from api.services.metrics import get_metrics, path_class
+
+
+def _record_http_metrics(path_class_name: str, duration_ms: float | None) -> None:
+    """Stage 11G: best-effort metric recording — must NEVER break the request
+    path, so any registry failure is logged and swallowed. Names are bounded
+    path classes (no ids/user data — see metrics.path_class)."""
+    try:
+        registry = get_metrics()
+        registry.record_counter(f"http_{path_class_name}_requests_total")
+        if duration_ms is not None:
+            registry.record_latency(f"http_{path_class_name}", duration_ms)
+    except Exception:  # noqa: BLE001 — observability must not break serving
+        logger.exception("metrics recording failed for class %s", path_class_name)
 
 REQUEST_ID_HEADER = "X-Request-ID"
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -91,6 +106,8 @@ class SlidingWindowLimiter:
 
 limiter = SlidingWindowLimiter()
 
+logger = logging.getLogger("payment_recovery.middleware")
+
 
 def resolve_key_name(x_api_key: str | None) -> str:
     """Map the incoming key to its non-secret config label for rate
@@ -108,6 +125,10 @@ def resolve_key_name(x_api_key: str | None) -> str:
 async def request_middleware(request: Request, call_next) -> Response:
     settings = get_settings()
 
+    # 0. Stage 11G: bounded path class for metrics — computed up front so the
+    # 429 rate-limit early-return path below is counted too.
+    klass = path_class(request.url.path)
+
     # 1. request id: honor well-formed client ids, else generate
     incoming = request.headers.get(REQUEST_ID_HEADER)
     request_id = incoming if incoming and _REQUEST_ID_PATTERN.match(incoming) else new_request_id()
@@ -118,6 +139,7 @@ async def request_middleware(request: Request, call_next) -> Response:
         bucket, limit = bucket_for_path(request.url.path)
         identity = resolve_key_name(request.headers.get("X-API-Key"))
         if not limiter.check(bucket_key(identity, bucket), limit):
+            _record_http_metrics(klass, None)
             return JSONResponse(
                 status_code=429,
                 headers={
@@ -134,7 +156,9 @@ async def request_middleware(request: Request, call_next) -> Response:
                 },
             )
 
+    start = time.perf_counter()
     response = await call_next(request)
+    _record_http_metrics(klass, (time.perf_counter() - start) * 1000.0)
 
     # 3. echo request id + security headers on every response
     response.headers[REQUEST_ID_HEADER] = request_id

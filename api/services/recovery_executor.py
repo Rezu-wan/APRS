@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from datetime import datetime
 from decimal import Decimal
 
@@ -66,6 +67,14 @@ from api.schemas.recovery_autonomous import (
 )
 from api.services.digital_twin import append_event
 from api.services.event_reconstruction import reconstruct_from_events
+from api.services.metrics import (
+    METRICS_PROVIDER_CALLS_TOTAL,
+    METRICS_PROVIDER_ERRORS_TOTAL,
+    METRICS_SAFETY_GATE_BLOCKS_TOTAL,
+    METRICS_VERIFICATION_LATENCY,
+    record_counter,
+    record_latency,
+)
 from api.services.payment_event_service import get_payment_events
 from api.services.recovery_safety import check_safety
 from api.services.recovery_verifier import VERIFIER_VERSION, verify_release
@@ -303,6 +312,7 @@ def execute_recovery(
         db, tx, _other_active_row(db, tx, row.id), now=now
     )
     if not gate.allowed:
+        record_counter(METRICS_SAFETY_GATE_BLOCKS_TOTAL)  # Stage 11G
         row.status = STATUS_BLOCKED
         row.blocked_reason = gate.blocked_reason
         row.decision_reason = (
@@ -368,6 +378,7 @@ def execute_recovery(
     )
 
     provider.ensure_hold(str(tx.transaction_id), float(tx.amount), tx.currency)
+    record_counter(METRICS_PROVIDER_CALLS_TOTAL)  # Stage 11G
     logger.info(
         "provider called: transaction_id=%s recovery_id=%s operation="
         "RELEASE_LIMIT amount=%s currency=%s",
@@ -379,6 +390,8 @@ def execute_recovery(
         currency=tx.currency,
         idempotency_key=key,
     )
+    if not result.success:
+        record_counter(METRICS_PROVIDER_ERRORS_TOTAL)  # Stage 11G
     logger.info(
         "provider result: transaction_id=%s recovery_id=%s success=%s "
         "error_code=%s provider_reference=%s",
@@ -445,6 +458,7 @@ def execute_recovery(
             )
         )
     )
+    _verify_t0 = time.perf_counter()
     verification = verify_release(
         tx,
         row,
@@ -454,6 +468,10 @@ def execute_recovery(
         all_recovery_rows=all_rows,
         now=now,
     )
+    record_latency(
+        METRICS_VERIFICATION_LATENCY,
+        (time.perf_counter() - _verify_t0) * 1000,
+    )  # Stage 11G
     row.verifier_version = VERIFIER_VERSION
     row.verification_result = _verification_json(verification)
 

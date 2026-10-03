@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     # concern; the interface is the contract.
     payment_provider: str = "mock"  # mock (only implementation in Stage 8)
 
+    # --- Stage 11A event-driven architecture -------------------------------
+    # In-process event bus seam (see api/services/eventbus). "in_memory" is
+    # the only implementation; anything else is a hard startup error.
+    event_bus: str = "in_memory"
+
     @property
     def customer_key_map(self) -> dict[str, str]:
         """API key -> customer_id for CUSTOMER-role keys.
