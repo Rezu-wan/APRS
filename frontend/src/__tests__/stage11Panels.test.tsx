@@ -161,6 +161,27 @@ describe("TemporalPanel", () => {
     }
   });
 
+  it("supports whole-day search — queries the END of the selected local day", async () => {
+    mockGetStateAt.mockResolvedValue(makeTemporalReport());
+
+    renderWithProviders(<TemporalPanel transactionId="TXN-1" />, {
+      authUser: { role: "ADMIN", keyName: "k" },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Whole day" }));
+    await userEvent.type(screen.getByTestId("temporal-date"), "2026-10-02");
+    expect(
+      screen.getByText(/state as of the END of the selected day/),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /inspect state/i }));
+
+    expect(await screen.findByText("Processing")).toBeInTheDocument();
+    const calls = mockGetStateAt.mock.calls;
+    const last = calls[calls.length - 1];
+    // The whole-day query must land at :59:59.999 of the day (end-of-day).
+    expect(last?.[1]).toMatch(/:59\.999\+00:00$/);
+  });
+
   it("renders a muted role line on 403", async () => {
     mockGetStateAt.mockRejectedValue(apiError(403, "INSUFFICIENT_PERMISSIONS", "forbidden"));
 

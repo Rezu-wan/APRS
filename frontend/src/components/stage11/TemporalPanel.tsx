@@ -120,16 +120,30 @@ function TemporalBody({ report }: { report: TemporalStateReport }) {
 }
 
 export function TemporalPanel({ transactionId }: { transactionId: string }) {
+  const [mode, setMode] = useState<"datetime" | "date">("datetime");
   const [inputValue, setInputValue] = useState("");
+  const [dateValue, setDateValue] = useState("");
   const [queriedAt, setQueriedAt] = useState<Date | null>(null);
   const stateQuery = useTemporalState(transactionId, queriedAt);
 
   function inspect() {
+    if (mode === "date") {
+      // Whole-day view: the state as of the END of the selected local day.
+      if (!dateValue) return;
+      const [y, m, d] = dateValue.split("-").map(Number);
+      const endOfDay = new Date(y, m - 1, d, 23, 59, 59, 999);
+      if (!Number.isNaN(endOfDay.getTime())) setQueriedAt(endOfDay);
+      return;
+    }
     const parsed = new Date(inputValue);
     if (!Number.isNaN(parsed.getTime())) {
       setQueriedAt(parsed);
     }
   }
+
+  const canInspect =
+    stateQuery.isFetching === false &&
+    (mode === "date" ? dateValue.length > 0 : inputValue.length > 0);
 
   return (
     <section
@@ -142,20 +156,70 @@ export function TemporalPanel({ transactionId }: { transactionId: string }) {
       </h2>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <label htmlFor="temporal-datetime" className="sr-only">
-          Past timestamp to inspect
-        </label>
-        <input
-          id="temporal-datetime"
-          type="datetime-local"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-        />
+        {/* Search granularity: an exact moment, or a whole day. */}
+        <div
+          role="group"
+          aria-label="Search granularity"
+          className="inline-flex overflow-hidden rounded-md border border-slate-300 shadow-sm"
+        >
+          <button
+            type="button"
+            aria-pressed={mode === "datetime"}
+            onClick={() => setMode("datetime")}
+            className={`px-2.5 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
+              mode === "datetime"
+                ? "bg-indigo-600 text-white"
+                : "bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            Date &amp; time
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === "date"}
+            onClick={() => setMode("date")}
+            className={`px-2.5 py-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${
+              mode === "date"
+                ? "bg-indigo-600 text-white"
+                : "bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            Whole day
+          </button>
+        </div>
+
+        {mode === "datetime" ? (
+          <>
+            <label htmlFor="temporal-datetime" className="sr-only">
+              Past timestamp to inspect
+            </label>
+            <input
+              id="temporal-datetime"
+              type="datetime-local"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            />
+          </>
+        ) : (
+          <>
+            <label htmlFor="temporal-date" className="sr-only">
+              Past day to inspect
+            </label>
+            <input
+              id="temporal-date"
+              data-testid="temporal-date"
+              type="date"
+              value={dateValue}
+              onChange={(e) => setDateValue(e.target.value)}
+              className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+            />
+          </>
+        )}
         <button
           type="button"
           onClick={inspect}
-          disabled={inputValue.length === 0 || stateQuery.isFetching}
+          disabled={!canInspect}
           className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
         >
           {stateQuery.isFetching && (
@@ -168,12 +232,20 @@ export function TemporalPanel({ transactionId }: { transactionId: string }) {
         </button>
         <button
           type="button"
-          onClick={() => setInputValue(toLocalInputValue(new Date()))}
+          onClick={() => {
+            setMode("datetime");
+            setInputValue(toLocalInputValue(new Date()));
+          }}
           className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
         >
           Now
         </button>
       </div>
+      <p className="mt-1.5 text-xs text-slate-400">
+        {mode === "date"
+          ? "Whole-day view — shows the state as of the END of the selected day (23:59 your local time)."
+          : "Exact-moment view — later events are never included."}
+      </p>
 
       <div className="mt-4">
         {queriedAt === null ? (
