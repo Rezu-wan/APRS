@@ -44,6 +44,20 @@ vi.mock("../api/demo", async (importOriginal) => {
   };
 });
 
+vi.mock("../api/stage11", async (importOriginal) => {
+  // Keep humanizeVerdict real; mock the network functions.
+  const actual = await importOriginal<typeof import("../api/stage11")>();
+  return {
+    ...actual,
+    getStateAt: vi.fn(),
+    getBehavioralSignals: vi.fn(),
+    getRelationships: vi.fn(),
+    runPolicySimulation: vi.fn(),
+    getChaosScenarios: vi.fn(),
+    runChaosScenario: vi.fn(),
+  };
+});
+
 // The vi.mock calls above are hoisted before these dynamic imports, so each
 // awaited module is the mocked one — the exported handles ARE the mock fns.
 const authMod = await import("../api/auth");
@@ -51,6 +65,7 @@ const transactionsMod = await import("../api/transactions");
 const recoveryMod = await import("../api/recovery");
 const explanationsMod = await import("../api/explanations");
 const demoMod = await import("../api/demo");
+const stage11Mod = await import("../api/stage11");
 
 export const mockGetMe = vi.mocked(authMod.getMe) as unknown as {
   (apiKey?: string): Promise<MeResponse>;
@@ -247,6 +262,76 @@ export const mockResetDemo = vi.mocked(demoMod.resetDemo) as unknown as {
 };
 
 // ---------------------------------------------------------------------------
+// Stage 11 mocks (src/api/stage11.ts)
+// ---------------------------------------------------------------------------
+
+export const mockGetStateAt = vi.mocked(stage11Mod.getStateAt) as unknown as {
+  (id: string, ts: string): Promise<import("../api/stage11").TemporalStateReport>;
+  mockResolvedValue: (v: import("../api/stage11").TemporalStateReport) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetBehavioralSignals = vi.mocked(
+  stage11Mod.getBehavioralSignals
+) as unknown as {
+  (id: string): Promise<import("../api/stage11").BehavioralReport>;
+  mockResolvedValue: (v: import("../api/stage11").BehavioralReport) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<import("../api/stage11").BehavioralReport>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetRelationships = vi.mocked(
+  stage11Mod.getRelationships
+) as unknown as {
+  (id: string): Promise<import("../api/stage11").RelationshipResponse>;
+  mockResolvedValue: (v: import("../api/stage11").RelationshipResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockReturnValue: (v: Promise<import("../api/stage11").RelationshipResponse>) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockRunPolicySimulation = vi.mocked(
+  stage11Mod.runPolicySimulation
+) as unknown as {
+  (req: import("../api/stage11").SimulatorRunRequest): Promise<import("../api/stage11").PolicySimulationRun>;
+  mockResolvedValue: (v: import("../api/stage11").PolicySimulationRun) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockGetChaosScenarios = vi.mocked(
+  stage11Mod.getChaosScenarios
+) as unknown as {
+  (): Promise<import("../api/stage11").ChaosScenarioListResponse>;
+  mockResolvedValue: (v: import("../api/stage11").ChaosScenarioListResponse) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+export const mockRunChaosScenario = vi.mocked(
+  stage11Mod.runChaosScenario
+) as unknown as {
+  (scenario: string): Promise<import("../api/stage11").ChaosRunResult>;
+  mockResolvedValue: (v: import("../api/stage11").ChaosRunResult) => unknown;
+  mockRejectedValue: (v: unknown) => unknown;
+  mockImplementation: (fn: (...args: unknown[]) => unknown) => unknown;
+  mockReset: () => unknown;
+  mock: { calls: unknown[][] };
+};
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -330,6 +415,12 @@ function defaultResetDemo(): Promise<import("../api/demo").DemoResetResponse> {
   return Promise.reject(new ApiError(500, "UNKNOWN", "resetDemo not stubbed"));
 }
 
+// Stage 11 defaults — staff-only reads; the panels render 403 as a muted
+// role line, so tests that don't care about them stay quiet.
+function defaultStaffForbidden(): Promise<never> {
+  return Promise.reject(new ApiError(403, "INSUFFICIENT_PERMISSIONS", "forbidden"));
+}
+
 /** A promise that never settles — used to hold requests in-flight. */
 export function neverPromise<T>(): Promise<T> {
   return new Promise<T>(() => {});
@@ -366,4 +457,22 @@ export function resetApiMocks(): void {
   mockInjectLateSettlement.mockImplementation(defaultInjectLateSettlement as never);
   mockResetDemo.mockReset();
   mockResetDemo.mockImplementation(defaultResetDemo as never);
+  mockGetStateAt.mockReset();
+  mockGetStateAt.mockImplementation((() => defaultStaffForbidden()) as never);
+  mockGetBehavioralSignals.mockReset();
+  mockGetBehavioralSignals.mockImplementation((() => defaultStaffForbidden()) as never);
+  mockGetRelationships.mockReset();
+  mockGetRelationships.mockImplementation((() => defaultStaffForbidden()) as never);
+  mockRunPolicySimulation.mockReset();
+  mockRunPolicySimulation.mockImplementation(
+    () => Promise.reject(new ApiError(500, "UNKNOWN", "runPolicySimulation not stubbed")) as never
+  );
+  mockGetChaosScenarios.mockReset();
+  mockGetChaosScenarios.mockImplementation(
+    () => Promise.resolve({ scenarios: [] }) as never
+  );
+  mockRunChaosScenario.mockReset();
+  mockRunChaosScenario.mockImplementation(
+    () => Promise.reject(new ApiError(500, "UNKNOWN", "runChaosScenario not stubbed")) as never
+  );
 }
