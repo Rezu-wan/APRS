@@ -32,16 +32,19 @@ from api.routes import (
     auth,
     autonomous_recovery,
     behavioral,
+    chaos,
     demo,
     explanations,
     metrics,
     payment_events,
+    policy_simulator,
     recovery,
     reconstruction,
     relationship,
     risk_assessment,
     sandbox,
     stats,
+    temporal,
     transactions,
 )
 from api.services.ml_service import get_ml_service
@@ -124,6 +127,9 @@ app.include_router(demo.router)
 app.include_router(behavioral.router)
 app.include_router(relationship.router)
 app.include_router(metrics.router)
+app.include_router(temporal.router)
+app.include_router(policy_simulator.router)
+app.include_router(chaos.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware
