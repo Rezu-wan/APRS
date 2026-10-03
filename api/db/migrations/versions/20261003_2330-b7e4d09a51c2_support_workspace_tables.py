@@ -24,8 +24,10 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
+# (re-parented onto customer_reports during the support/db/customer merge —
+# it originally branched off c7e1f2a93b84, which left two alembic heads)
 revision: str = 'b7e4d09a51c2'
-down_revision: Union[str, None] = 'c7e1f2a93b84'
+down_revision: Union[str, None] = 'd4e5f6a7b8c9'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
