@@ -1,4 +1,4 @@
-# APRS - (AI Powered Recovery System)
+# APRS - (AI-assisted payment recovery system)
 
 Autonomous Payment Recovery System — an intelligent, event-driven platform for detecting failed payment transactions, assessing recovery risk with machine learning, and executing deterministic recovery decisions through a safety-gated pipeline.
 
