@@ -9,7 +9,9 @@ import {
   Menu,
   Presentation,
   RefreshCcw,
+  Scale,
   X,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { JudgeModeProvider, useJudgeMode } from "../context/JudgeModeContext";
@@ -19,6 +21,8 @@ const NAV_ITEMS = [
   { to: "/transactions", label: "Transactions", icon: RefreshCcw, staffOnly: false },
   { to: "/demo", label: "Demo", icon: FlaskConical, staffOnly: true },
   { to: "/status", label: "Status", icon: Activity, staffOnly: true },
+  { to: "/simulator", label: "Simulator", icon: Scale, staffOnly: true },
+  { to: "/chaos", label: "Chaos Lab", icon: Zap, staffOnly: true },
 ];
 
 const ROLE_CHIP_STYLES: Record<string, string> = {
