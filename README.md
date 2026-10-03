@@ -1591,3 +1591,113 @@ Stage 9 E2E **13/13** · Stage 10 E2E **18/18** · seed **6/6** · demo check
 **READY FOR DEMO**. New tests: `tests/test_demo_router.py` (roles, no-bypass,
 S5 race, reset determinism, audit) and nine frontend suites for the panel,
 console, pipeline, safety gate and verification cards.
+
+## 21. Event-driven intelligence, temporal twin & policy research (Stage 11)
+
+Stage 11 evolves the finished Stage 1–10 system toward an **event-driven,
+temporally reconstructable, safety-evaluable research platform** — by
+extension only: one Digital Twin, one reconstruction engine, one recovery
+policy, one safety gate; ML and GenAI still never authorize anything. The
+sandbox/simulated-only disclaimers are unchanged. Details in
+`reports/stage11_architecture.md` (+ temporal model, policy simulation,
+chaos testing, research evaluation, baseline).
+
+### 21.1 Event bus & correlation (11A)
+
+`api/services/eventbus/` — an `EventBus` ABC (`publish/subscribe/replay/
+close`) with an `InMemoryEventBus` implementation: per-subscriber
+**idempotent delivery** (duplicate `event_id` never re-invokes a handler),
+subscriber failures isolated and logged, bounded in-memory replay store
+(the durable record remains `payment_events`/`digital_twin_events`).
+Kafka/Redis/Postgres adapters slot in behind the ABC without touching
+business logic. Payment events gain `correlation_id` (= transaction id),
+`causation_id` (reserved for engine-caused events) and `schema_version`
+(migration `c7e1f2a93b84`); ingestion publishes one envelope per NEW event —
+duplicates are suppressed end to end and the bus can never break ingestion.
+
+### 21.2 Temporal Digital Twin (11B)
+
+`GET /api/v1/transactions/{id}/state-at?timestamp=ISO` (staff-only) answers
+**"what did the system know at T?"**: events with `event_timestamp <= T` run
+through the SAME deterministic reconstruction engine as the live path;
+`state_then` derives from the twin timeline; **future events never rewrite
+the past** — they are counted (`excluded_event_count`) and reported in an
+explicit uncertainty note, never used.
+
+### 21.3 Online intelligence & relationship signals (11C/11D) — advisory only
+
+- **Behavioral signals** (`/behavioral-signals`, `behavioral-v1`): nine
+  explainable statistical signals (frequency, z-scores for amount/latency/
+  retries, failure counts, gateway/merchant rates, unusual hour, bursts)
+  with honest UNKNOWN floors when history is insufficient.
+- **Relationships** (`/relationships`, `relationship-v1`): a relational
+  entity/edge view (USER/TRANSACTION/MERCHANT/GATEWAY/REFERENCE — no graph
+  database, no new tables) with duplicate-reference, burst, repeated-
+  failure and merchant-rate signals. Both surfaces are read-only staff
+  endpoints and never feed the policy or the safety gate.
+
+### 21.4 Policy simulator & chaos lab (11E/11F)
+
+- **`POST /api/v1/policy-simulator/run`** (SYSTEM/ADMIN): replays stored
+  evidence through **versioned policies** — `autonomous-v1` (the active
+  policy, wrapped), `manual-only-baseline`, and `autonomous-v2-experimental`
+  (documented delta: MEDIUM risk releases only at reconstruction confidence
+  ≥ 0.6). Measures would_release/block/manual/no_action, safety-gate vetoes
+  on identical evidence, false/missed recovery against the demo ground
+  truth, and provider calls avoided. **Purity is test-pinned**: only a
+  `POLICY_SIMULATION` audit row is written; `affects_live_policy` is always
+  false. The comparison is a flat metric table — the simulator never ranks.
+- **`POST /api/v1/chaos/run`** (SYSTEM/ADMIN): ten deterministic fault
+  scenarios against the REAL engine (gateway/merchant failures, late
+  settlement, duplicate + out-of-order events, provider timeout/error,
+  **10-thread concurrent recovery**, and `DB_FAILURE_SIMULATION` honestly
+  SKIP-covered by unit tests). Invariants are asserted after every run and
+  never raise past a FAIL verdict; fixtures purge rerun-safely (including
+  provider-level replay drops). No endpoint fakes a recovery.
+
+### 21.5 Observability (11G)
+
+Thread-safe in-process metrics registry (`/api/v1/metrics`, SYSTEM/ADMIN):
+the spec'd domain counters (transactions, payment events, reconstructions,
+risk assessments, recovery attempts/success/blocked/failed, manual
+reviews, provider calls/errors, **safety-gate blocks**) and latency series,
+wired at the service layer so every caller counts and replays never do;
+plus bounded `http_<path-class>` request/latency series. No ids, users or
+amounts ever appear in metric names. In-process scope is a documented
+limitation (same class as the Stage 9 rate limiter).
+
+### 21.6 Research evaluation (11H)
+
+`py -m scripts.stage11_experiment` runs the reproducible experiment
+framework against the live API: E1 policy comparison, E2 measured
+safety-gate contribution (the gate is always on — vetoes + chaos
+invariants, never a fabricated gate-off counterfactual), E3 chaos
+reliability (all ten scenarios), E4 real latencies. Every output records
+dataset_fingerprint, policy/code versions, seed and the git commit;
+results land machine-readable under `reports/stage11/{configs,experiments,
+metrics}/`. Same corpus → identical fingerprints and decision metrics
+(latencies excluded from the contract). The research question, measured
+answers, and the full limitations list (synthetic data, n=6 corpus, no
+ML-ablation via API, no real-world claims of any kind) are in
+`reports/stage11_research_evaluation.md`.
+
+### 21.7 Frontend
+
+- Transaction page: **Temporal panel** (inspect state-at-time with the
+  excluded-events note), **Behavioral signals** and **Relationships**
+  panels (staff; 403 renders as a muted role line).
+- **/simulator** — Policy Simulator page (policy selection, demo/custom
+  corpus, per-policy result cards, flat comparison table with an explicit
+  no-ranking footer, JSON export; SYSTEM/ADMIN run controls).
+- **/chaos** — Chaos Lab page (catalog cards, per-scenario run, verdict +
+  invariant checklists, honest SKIP notes).
+- Nav gains staff-only Simulator and Chaos Lab entries; CUSTOMER never
+  sees any Stage 11 surface.
+
+Verification (all green on 2026-10-03): **406 passed, 1 skipped** backend ·
+**99/99** frontend · `tsc` clean · production build · Stage 8 E2E **7/7** ·
+Stage 9 E2E **13/13** · Stage 10 E2E **18/18** · **Stage 11 E2E 13/13** ·
+seed **6/6** · demo check **READY FOR DEMO**. New tests: event bus (14),
+behavioral (11), relationships (12), metrics (30), temporal (17), policy
+simulator (10), chaos (23). Audit vocabulary extended (POLICY_SIMULATION,
+CHAOS_TEST, TEMPORAL_QUERY, GRAPH_ANALYSIS, MODEL_SIGNAL).

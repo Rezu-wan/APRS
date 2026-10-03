@@ -1,6 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { ApiError } from "../api/client";
+import { useAuth } from "../context/AuthContext";
 import { useTimeline, useTransaction } from "../hooks/useQueries";
 import { ErrorState } from "../components/ui/ErrorState";
 import { RoleGate } from "../components/ui/RoleGate";
@@ -15,6 +16,10 @@ import { SandboxLedgerCard } from "../components/sandbox/SandboxLedgerCard";
 import { ReconstructionPanel } from "../components/reconstruction/ReconstructionPanel";
 import { AutonomousRecoveryPanel } from "../components/recovery/AutonomousRecoveryPanel";
 import { RiskAssessmentPanel } from "../components/risk/RiskAssessmentPanel";
+import { CustomerReportCard } from "../components/customer/CustomerReportCard";
+import { TemporalPanel } from "../components/stage11/TemporalPanel";
+import { BehavioralSignalsPanel } from "../components/stage11/BehavioralSignalsPanel";
+import { RelationshipsPanel } from "../components/stage11/RelationshipsPanel";
 import { Timeline } from "../components/timeline/Timeline";
 import { ExplanationCard } from "../components/explanation/ExplanationCard";
 
@@ -34,8 +39,15 @@ function failurePredictionLabel(prediction: string | null): string {
 
 export default function TransactionDetails() {
   const { transactionId = "" } = useParams<{ transactionId: string }>();
+  const { user } = useAuth();
+  const isCustomer = user?.role === "CUSTOMER";
   const transactionQuery = useTransaction(transactionId);
-  const timelineQuery = useTimeline(transactionId);
+  // The timeline read rides on the same authorization as the transaction read
+  // — hold it until that read has succeeded so an unauthorized id produces a
+  // single 403 (the ownership probe) and no doomed follow-up. Backend
+  // authorization stays the source of truth; this only avoids a request the
+  // frontend already knows is forbidden.
+  const timelineQuery = useTimeline(transactionId, { enabled: transactionQuery.isSuccess });
 
   if (transactionQuery.isPending) {
     return (
@@ -68,10 +80,17 @@ export default function TransactionDetails() {
       );
     }
     if (error instanceof ApiError && error.status === 403) {
+      // The backend answers 403 (not 404) for unknown AND un-owned ids so the
+      // endpoint cannot be used to enumerate transactions — keep the message
+      // non-enumerating and role-appropriate.
       return (
         <ErrorState
-          title="Access denied"
-          message="Your role cannot view transactions."
+          title={isCustomer ? "Not available on your account" : "Access denied"}
+          message={
+            isCustomer
+              ? "This transaction is not available on your account."
+              : "Your role cannot view transactions."
+          }
         />
       );
     }
@@ -109,12 +128,18 @@ export default function TransactionDetails() {
         </div>
       </header>
 
-      {/* Stage 10 — pipeline visualization directly under the header */}
-      <RecoveryPipeline transactionId={transaction.transaction_id} />
+      {/* Stage 10 — pipeline visualization. Staff-only reads: the pipeline
+          combines risk-assessment + recovery reads that 403 for CUSTOMER, so
+          customers get the honest summary from the header + timeline instead.
+          (Backend authorization remains the source of truth — the frontend
+          merely avoids requests it already knows are forbidden.) */}
+      {!isCustomer && <RecoveryPipeline transactionId={transaction.transaction_id} />}
 
       <TransactionSummary transaction={transaction} />
 
-      <RoleGate allowed={["SYSTEM", "ADMIN", "SUPPORT"]}>
+      {/* silent: for CUSTOMER this staff block is simply not part of the page
+          (no AccessDenied card mid-page, no staff queries fired). */}
+      <RoleGate allowed={["SYSTEM", "ADMIN", "SUPPORT"]} silent>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Model assessment */}
           <section
@@ -124,6 +149,10 @@ export default function TransactionDetails() {
             <h2 id="model-assessment-heading" className="text-sm font-semibold text-slate-900">
               Model assessment
             </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Stage-2 model snapshot (advisory) — decisions are driven by the Stage-7
+              hybrid risk assessment further down this page.
+            </p>
             <p className="mt-3 text-sm text-slate-600">
               Failure prediction:{" "}
               <span className="font-medium text-slate-900">
@@ -147,8 +176,11 @@ export default function TransactionDetails() {
         <SandboxLedgerCard transactionId={transaction.transaction_id} />
       </RoleGate>
 
-      {/* Payment flow reconstruction — all roles; CUSTOMER gets a muted 403 line */}
+      {/* Payment flow reconstruction — all roles (customer-scoped server-side) */}
       <ReconstructionPanel transactionId={transaction.transaction_id} />
+
+      {/* Customer problem reports — evidence-only filing/reading (all roles) */}
+      <CustomerReportCard transactionId={transaction.transaction_id} />
 
       {/* Timeline — full width */}
       <section aria-labelledby="timeline-heading">
@@ -178,14 +210,26 @@ export default function TransactionDetails() {
         </div>
       </section>
 
-      {/* Safety gate — derived checklist from fresh evidence */}
-      <SafetyGateCard transactionId={transaction.transaction_id} />
+      {/* Staff-only recovery internals — hidden for CUSTOMER (these panels
+          read staff-gated endpoints; rendering them for a customer would just
+          produce 403s and muted "unavailable for your role" lines). */}
+      {!isCustomer && (
+        <>
+          {/* Safety gate — derived checklist from fresh evidence */}
+          <SafetyGateCard transactionId={transaction.transaction_id} />
 
-      {/* Recovery verification — self-fetching; muted honest state when none */}
-      <VerificationCard transactionId={transaction.transaction_id} />
+          {/* Recovery verification — self-fetching; muted honest state when none */}
+          <VerificationCard transactionId={transaction.transaction_id} />
 
-      {/* Hybrid risk assessment — all roles; CUSTOMER gets a muted 403 line */}
-      <RiskAssessmentPanel transactionId={transaction.transaction_id} />
+          {/* Hybrid risk assessment */}
+          <RiskAssessmentPanel transactionId={transaction.transaction_id} />
+
+          {/* Stage 11 intelligence — temporal twin, behavioral + relationship signals */}
+          <TemporalPanel transactionId={transaction.transaction_id} />
+          <BehavioralSignalsPanel transactionId={transaction.transaction_id} />
+          <RelationshipsPanel transactionId={transaction.transaction_id} />
+        </>
+      )}
 
       {/* Explanation — all roles; the card locks CUSTOMER to Bangla + customer audience */}
       <ExplanationCard transactionId={transaction.transaction_id} />

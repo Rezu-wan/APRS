@@ -9,7 +9,9 @@ import {
   Menu,
   Presentation,
   RefreshCcw,
+  Scale,
   X,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { JudgeModeProvider, useJudgeMode } from "../context/JudgeModeContext";
@@ -19,6 +21,8 @@ const NAV_ITEMS = [
   { to: "/transactions", label: "Transactions", icon: RefreshCcw, staffOnly: false },
   { to: "/demo", label: "Demo", icon: FlaskConical, staffOnly: true },
   { to: "/status", label: "Status", icon: Activity, staffOnly: true },
+  { to: "/simulator", label: "Simulator", icon: Scale, staffOnly: true },
+  { to: "/chaos", label: "Chaos Lab", icon: Zap, staffOnly: true },
 ];
 
 const ROLE_CHIP_STYLES: Record<string, string> = {
@@ -205,18 +209,18 @@ function CustomerBanner() {
   return (
     <div
       role="note"
-      className="mb-6 flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+      className="mb-6 flex items-start gap-3 rounded-lg border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-900"
     >
       <Info aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" />
       <p className="flex-1">
-        Your role has limited access — transaction reads are disabled server-side until customer
-        identity is bound.
+        You are signed in as a customer — you see only your own transactions. Use the dashboard
+        for an overview or open Transactions to browse, filter, and report problems.
       </p>
       <button
         type="button"
         onClick={() => setDismissed(true)}
         aria-label="Dismiss notice"
-        className="rounded-md p-1 text-amber-600 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+        className="rounded-md p-1 text-indigo-500 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600"
       >
         <X aria-hidden="true" className="h-4 w-4" />
       </button>

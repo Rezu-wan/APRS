@@ -179,6 +179,52 @@ def test_get_risk_assessment_unknown_tx_is_404(client):
     assert resp.status_code == 404
 
 
+def test_get_risk_assessment_serves_dataset_evidence_without_source(client):
+    """Dataset-loaded assessments carry evidence entries with no ``source``
+    key (the CSV has no provenance column) — GET must serve them instead of
+    500ing on the strict EvidenceItem model."""
+    from api.db.models import RiskAssessmentRecord
+
+    tid = _unique_id()
+    _seed_tx(client, tid)
+    db = SessionLocal()
+    try:
+        db.add(
+            RiskAssessmentRecord(
+                assessment_id=f"RSA-{uuid.uuid4().hex[:12]}",
+                transaction_id=tid,
+                evidence_fingerprint="f" * 64,
+                anomaly_type="GENUINE_FAILURE",
+                risk_level="LOW",
+                risk_score=0.2,
+                deterministic_risk_score=0.2,
+                recovery_candidate=True,
+                # dataset shape: code/description/severity only, no source
+                evidence=[
+                    {
+                        "code": "SCENARIO",
+                        "description": "Scenario failure injected for DEMO run",
+                        "severity": "LOW",
+                    }
+                ],
+                triggered_rules=[{"rule_id": "R1", "name": "Genuine failure"}],
+                model_version="synthetic-v1",
+                rule_version="1",
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    resp = client.get(RISK_URL.format(tid=tid), headers=SUPPORT_KEY)
+    assert resp.status_code == 200
+    evidence = resp.json()["assessment"]["evidence"]
+    assert evidence == [
+        {"code": "SCENARIO", "description": "Scenario failure injected for DEMO run",
+         "source": None, "severity": "LOW"}
+    ]
+
+
 def test_get_risk_assessment_none_yet_is_404(client):
     tid = _unique_id()
     _seed_tx(client, tid)

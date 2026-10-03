@@ -71,6 +71,10 @@ from api.schemas.risk_assessment import (
 )
 from api.services.anomaly_rules import RULE_VERSION, assess_rules
 from api.services.event_reconstruction import reconstruct_from_events
+from api.services.metrics import (
+    METRICS_RISK_ASSESSMENTS_TOTAL,
+    record_counter,
+)
 from api.services.payment_event_service import get_payment_events
 
 logger = logging.getLogger("payment_recovery.risk_engine")
@@ -418,6 +422,7 @@ def persist_assessment(
         rule_version=assessment.rule_version,
     )
     db.add(record)
+    record_counter(METRICS_RISK_ASSESSMENTS_TOTAL)  # Stage 11G: genuinely new assessments only (service-side)
     return record
 
 

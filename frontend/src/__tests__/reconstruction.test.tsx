@@ -51,7 +51,7 @@ describe("ReconstructionPanel", () => {
     expect(await screen.findByText("Bank debit")).toBeInTheDocument();
     expect(screen.getAllByText("Gateway").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Merchant confirmation").length).toBeGreaterThan(0);
-    expect(screen.getByText("Settlement")).toBeInTheDocument();
+    expect(screen.getAllByText("Settlement").length).toBeGreaterThanOrEqual(1);
 
     // Statuses appear in the checklist (text + icon, never color-only)
     // Statuses appear in the checklist AND the raw-events table, hence getAllBy.

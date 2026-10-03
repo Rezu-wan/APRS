@@ -29,6 +29,10 @@ from api.core.config import Settings
 from api.core.state_machine import TransactionState, transition_path
 from api.db.models import DigitalTwinEvent, Transaction
 from api.services.digital_twin import append_event
+from api.services.metrics import (
+    METRICS_TRANSACTIONS_TOTAL,
+    record_counter,
+)
 from api.services.ml_service import MLService
 
 logger = logging.getLogger("payment_recovery.transactions")
@@ -170,6 +174,7 @@ def record_event(
                     reason="transaction registered",
                 )
             )
+            record_counter(METRICS_TRANSACTIONS_TOTAL)  # Stage 11G: service-side so demo/chaos callers count too
             logger.info("transaction created: id=%s", transaction_id)
 
     path = transition_path(tx.current_state, str(payload.status.value))

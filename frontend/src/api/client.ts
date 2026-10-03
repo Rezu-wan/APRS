@@ -137,9 +137,9 @@ export async function getWithApiKey<T>(url: string, apiKey: string): Promise<T> 
   }
 }
 
-export async function get<T>(url: string): Promise<T> {
+export async function get<T>(url: string, config?: { params?: Record<string, unknown> }): Promise<T> {
   try {
-    const response = await apiClient.get<T>(url);
+    const response = await apiClient.get<T>(url, config);
     return response.data;
   } catch (error) {
     if (error instanceof ApiError) throw error;

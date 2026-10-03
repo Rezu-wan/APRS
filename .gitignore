@@ -23,3 +23,9 @@ data/test*.db
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Claude Code session memory (local only — contains machine-specific notes)
+/memory/
+
+# local DB backups (safety artifacts of the dataset loader)
+data/app.db.backup*

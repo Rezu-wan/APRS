@@ -16,6 +16,8 @@ import type { MeResponse, Role } from "../types/api";
 interface AuthUser {
   role: Role;
   keyName: string;
+  /** Bound customer identity (CUSTOMER keys only); null for staff. */
+  customerId: string | null;
 }
 
 interface AuthContextValue {
@@ -45,7 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     getMe()
       .then((me) => {
-        if (!cancelled) setUser({ role: me.role, keyName: me.key_name });
+        if (!cancelled)
+          setUser({ role: me.role, keyName: me.key_name, customerId: me.customer_id ?? null });
       })
       .catch(() => {
         // 401 already cleared the session in the client; clear defensively here
@@ -67,8 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // 401 redirect/reload in the API client.
       clearSession();
       const me = await getMeWithKey(apiKey);
-      setSession({ apiKey, role: me.role, keyName: me.key_name });
-      setUser({ role: me.role, keyName: me.key_name });
+      setSession({ apiKey, role: me.role, keyName: me.key_name, customerId: me.customer_id ?? null });
+      setUser({ role: me.role, keyName: me.key_name, customerId: me.customer_id ?? null });
       return me;
     },
     []

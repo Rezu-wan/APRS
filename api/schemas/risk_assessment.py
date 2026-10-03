@@ -145,12 +145,14 @@ class EvidenceItem(BaseModel):
 
     ``code`` is from the EVIDENCE_CODES vocabulary; ``description`` is
     human-readable English traceable to the observation; ``source`` says
-    where the fact came from.
+    where the fact came from. ``source`` is optional: dataset-loaded
+    assessments carry evidence without provenance (the CSV has no source
+    column), while live-pipeline evidence always sets it.
     """
 
     code: str
     description: str
-    source: str  # EVIDENCE_SOURCES value
+    source: str | None = None  # EVIDENCE_SOURCES value; None for dataset rows
     severity: str  # LOW | MEDIUM | HIGH | CRITICAL
 
 

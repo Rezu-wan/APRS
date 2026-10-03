@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { releaseLimit } from "../api/recovery";
 import { requestExplanation } from "../api/explanations";
 import { processRecovery, runRiskAssessment } from "../api/transactions";
+import { fileCustomerReport, type FileCustomerReportInput } from "../api/customerReports";
 import { queryKeys } from "./useQueries";
 import type { Audience, Language } from "../types/api";
 
@@ -69,6 +70,23 @@ export function useRunAssessment(id: string) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.timeline(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.stats });
       void queryClient.invalidateQueries({ queryKey: queryKeys.transaction(id) });
+    },
+  });
+}
+
+/**
+ * File (or idempotently replay) the customer's problem report. Evidence only:
+ * refreshes the report + timeline caches (a twin observation is appended) but
+ * never a decision cache — reports cannot change transaction state.
+ */
+export function useFileCustomerReport(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Omit<FileCustomerReportInput, "transactionId">) =>
+      fileCustomerReport({ transactionId: id, ...input }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.customerReport(id) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.timeline(id) });
     },
   });
 }

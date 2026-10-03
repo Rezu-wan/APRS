@@ -1,0 +1,873 @@
+{
+  "experiment": "stage11_phase_11h",
+  "run_id": "dfa4f80c2d1545f5bbed6d7c362e427d",
+  "research_question": "Can safety-gated autonomous recovery reduce recovery latency while preventing unsafe financial state changes compared with less constrained recovery strategies?",
+  "dataset_fingerprint": "12dddfdea660c9b1721f2a17c46a3087370fd0b4987aa52ca56bfaccb4adf427",
+  "policy_versions_evaluated": [
+    "autonomous-v1",
+    "manual-only-baseline",
+    "autonomous-v2-experimental"
+  ],
+  "code_versions": {
+    "policies": [
+      "autonomous-v1",
+      "manual-only-baseline",
+      "autonomous-v2-experimental"
+    ],
+    "rule_version": "1",
+    "model_version": "synthetic-v1",
+    "executor": "not-invoked",
+    "verifier": "not-invoked"
+  },
+  "seed": 42,
+  "seed_note": "Recorded for convention only. The simulator and demo corpus are deterministic: the same seed + same corpus reproduce the same dataset_fingerprint and the same E1 decision metrics. The seed does not jitter anything in this experiment.",
+  "git_commit": "b4ecf6e39ba0e528d6bc7fbb2cffea5e260a4d10",
+  "experiment_timestamp_utc": "2026-10-03T00:48:21Z",
+  "api_url": "http://127.0.0.1:8000",
+  "environment": "development",
+  "configuration": {
+    "policies": [
+      "autonomous-v1",
+      "manual-only-baseline",
+      "autonomous-v2-experimental"
+    ],
+    "simulator_source": {
+      "demo": true
+    },
+    "chaos_scenarios": [
+      "GATEWAY_TIMEOUT",
+      "GATEWAY_ERROR",
+      "MERCHANT_TIMEOUT",
+      "LATE_SETTLEMENT",
+      "DUPLICATE_EVENT",
+      "OUT_OF_ORDER_EVENT",
+      "PROVIDER_TIMEOUT",
+      "PROVIDER_ERROR",
+      "CONCURRENT_RECOVERY",
+      "DB_FAILURE_SIMULATION"
+    ],
+    "gate_contribution_scenarios": [
+      "LATE_SETTLEMENT",
+      "CONCURRENT_RECOVERY"
+    ],
+    "latency_series": [
+      "recovery_latency_ms",
+      "risk_latency_ms",
+      "reconstruction_latency_ms"
+    ],
+    "demo_reset_before_measurement": true,
+    "figures_enabled": true,
+    "output_files": {},
+    "sandbox_only": true
+  },
+  "e1_policy_comparison": {
+    "run_id": "dfa4f80c2d1545f5bbed6d7c362e427d",
+    "simulated": true,
+    "affects_live_policy": false,
+    "ground_truth_available": true,
+    "dataset": {
+      "source": "demo",
+      "transaction_ids": [
+        "DEMO-S1",
+        "DEMO-S2",
+        "DEMO-S3",
+        "DEMO-S4",
+        "DEMO-S5",
+        "DEMO-S6"
+      ],
+      "dataset_fingerprint": "12dddfdea660c9b1721f2a17c46a3087370fd0b4987aa52ca56bfaccb4adf427"
+    },
+    "policies": [
+      {
+        "policy_version": "autonomous-v1",
+        "description": "The ACTIVE production recovery decision policy (Stage 8), evaluated unchanged.",
+        "experimental": false,
+        "transactions_evaluated": 6,
+        "would_release": 3,
+        "would_block": 2,
+        "would_manual_review": 0,
+        "would_no_action": 1,
+        "gate_vetoes": 0,
+        "false_recovery": 0,
+        "missed_recovery": 0,
+        "provider_calls_avoided": 3,
+        "decision_latency_ms_avg": 0.018,
+        "decisions": [
+          {
+            "transaction_id": "DEMO-S1",
+            "action": "RELEASE_LIMIT",
+            "blocked_reason": null,
+            "eligible": true,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S2",
+            "action": "NO_ACTION",
+            "blocked_reason": "DOUBLE_DEDUCTION",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "DOUBLE_DEDUCTION",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S3",
+            "action": "NO_ACTION",
+            "blocked_reason": "ALREADY_SUCCESS",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "NEW_SUCCESSFUL_SETTLEMENT",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S4",
+            "action": "NO_ACTION",
+            "blocked_reason": "INSUFFICIENT_EVIDENCE",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "RISK_NO_LONGER_PERMITS",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S5",
+            "action": "RELEASE_LIMIT",
+            "blocked_reason": null,
+            "eligible": true,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S6",
+            "action": "RELEASE_LIMIT",
+            "blocked_reason": null,
+            "eligible": true,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          }
+        ]
+      },
+      {
+        "policy_version": "manual-only-baseline",
+        "description": "EXPERIMENTAL research baseline: never acts autonomously; genuine failures go to MANUAL_REVIEW, everything else NO_ACTION.",
+        "experimental": true,
+        "transactions_evaluated": 6,
+        "would_release": 0,
+        "would_block": 0,
+        "would_manual_review": 3,
+        "would_no_action": 3,
+        "gate_vetoes": 0,
+        "false_recovery": 0,
+        "missed_recovery": 3,
+        "provider_calls_avoided": 6,
+        "decision_latency_ms_avg": 0.004,
+        "decisions": [
+          {
+            "transaction_id": "DEMO-S1",
+            "action": "MANUAL_REVIEW",
+            "blocked_reason": "NOT_ELIGIBLE",
+            "eligible": false,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S2",
+            "action": "NO_ACTION",
+            "blocked_reason": "NOT_ELIGIBLE",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "DOUBLE_DEDUCTION",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S3",
+            "action": "NO_ACTION",
+            "blocked_reason": "NOT_ELIGIBLE",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "NEW_SUCCESSFUL_SETTLEMENT",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S4",
+            "action": "NO_ACTION",
+            "blocked_reason": "NOT_ELIGIBLE",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "RISK_NO_LONGER_PERMITS",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S5",
+            "action": "MANUAL_REVIEW",
+            "blocked_reason": "NOT_ELIGIBLE",
+            "eligible": false,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S6",
+            "action": "MANUAL_REVIEW",
+            "blocked_reason": "NOT_ELIGIBLE",
+            "eligible": false,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          }
+        ]
+      },
+      {
+        "policy_version": "autonomous-v2-experimental",
+        "description": "EXPERIMENTAL delta from the active policy: releases LOW-risk genuine failures as v1 does, but releases MEDIUM risk only when reconstruction confidence >= 0.6 (else MANUAL_REVIEW). All other rules identical to the active policy.",
+        "experimental": true,
+        "transactions_evaluated": 6,
+        "would_release": 3,
+        "would_block": 2,
+        "would_manual_review": 0,
+        "would_no_action": 1,
+        "gate_vetoes": 0,
+        "false_recovery": 0,
+        "missed_recovery": 0,
+        "provider_calls_avoided": 3,
+        "decision_latency_ms_avg": 0.012,
+        "decisions": [
+          {
+            "transaction_id": "DEMO-S1",
+            "action": "RELEASE_LIMIT",
+            "blocked_reason": null,
+            "eligible": true,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S2",
+            "action": "NO_ACTION",
+            "blocked_reason": "DOUBLE_DEDUCTION",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "DOUBLE_DEDUCTION",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S3",
+            "action": "NO_ACTION",
+            "blocked_reason": "ALREADY_SUCCESS",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "NEW_SUCCESSFUL_SETTLEMENT",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S4",
+            "action": "NO_ACTION",
+            "blocked_reason": "INSUFFICIENT_EVIDENCE",
+            "eligible": false,
+            "gate_allowed": false,
+            "gate_blocked_reason": "RISK_NO_LONGER_PERMITS",
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S5",
+            "action": "RELEASE_LIMIT",
+            "blocked_reason": null,
+            "eligible": true,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          },
+          {
+            "transaction_id": "DEMO-S6",
+            "action": "RELEASE_LIMIT",
+            "blocked_reason": null,
+            "eligible": true,
+            "gate_allowed": true,
+            "gate_blocked_reason": null,
+            "gate_vetoed": false
+          }
+        ]
+      }
+    ],
+    "comparison": [
+      {
+        "metric": "transactions_evaluated",
+        "per_policy": {
+          "autonomous-v1": 6,
+          "manual-only-baseline": 6,
+          "autonomous-v2-experimental": 6
+        }
+      },
+      {
+        "metric": "would_release",
+        "per_policy": {
+          "autonomous-v1": 3,
+          "manual-only-baseline": 0,
+          "autonomous-v2-experimental": 3
+        }
+      },
+      {
+        "metric": "would_block",
+        "per_policy": {
+          "autonomous-v1": 2,
+          "manual-only-baseline": 0,
+          "autonomous-v2-experimental": 2
+        }
+      },
+      {
+        "metric": "would_manual_review",
+        "per_policy": {
+          "autonomous-v1": 0,
+          "manual-only-baseline": 3,
+          "autonomous-v2-experimental": 0
+        }
+      },
+      {
+        "metric": "would_no_action",
+        "per_policy": {
+          "autonomous-v1": 1,
+          "manual-only-baseline": 3,
+          "autonomous-v2-experimental": 1
+        }
+      },
+      {
+        "metric": "gate_vetoes",
+        "per_policy": {
+          "autonomous-v1": 0,
+          "manual-only-baseline": 0,
+          "autonomous-v2-experimental": 0
+        }
+      },
+      {
+        "metric": "false_recovery",
+        "per_policy": {
+          "autonomous-v1": 0,
+          "manual-only-baseline": 0,
+          "autonomous-v2-experimental": 0
+        }
+      },
+      {
+        "metric": "missed_recovery",
+        "per_policy": {
+          "autonomous-v1": 0,
+          "manual-only-baseline": 3,
+          "autonomous-v2-experimental": 0
+        }
+      },
+      {
+        "metric": "provider_calls_avoided",
+        "per_policy": {
+          "autonomous-v1": 3,
+          "manual-only-baseline": 6,
+          "autonomous-v2-experimental": 3
+        }
+      }
+    ],
+    "generated_at": "2026-10-03T00:48:03.864368Z",
+    "code_versions": {
+      "policies": [
+        "autonomous-v1",
+        "manual-only-baseline",
+        "autonomous-v2-experimental"
+      ],
+      "rule_version": "1",
+      "model_version": "synthetic-v1",
+      "executor": "not-invoked",
+      "verifier": "not-invoked"
+    }
+  },
+  "e2_gate_contribution": {
+    "honest_scope": "HONEST SCOPE (E2): the safety gate is ALWAYS on in this system and cannot be switched off through the API, so no gate-off run exists. The reported comparison is (policy decisions) vs (policy decisions + measured gate vetoes): v1's gate_vetoes on the demo corpus plus the LATE_SETTLEMENT and CONCURRENT_RECOVERY chaos invariants. No gate-off counterfactual is fabricated anywhere in this experiment.",
+    "v1_gate_vetoes_on_corpus": 0,
+    "v1_vetoed_decisions": [],
+    "chaos_gate_invariants": {
+      "LATE_SETTLEMENT": {
+        "verdict": "PASS",
+        "invariants_held": 6,
+        "invariants_total": 6,
+        "invariants": [
+          {
+            "name": "late_settlement_ingested",
+            "held": true,
+            "detail": "ingest result {'transaction_id': 'CHAOS-LATE_SETTLEMENT-1', 'created': 1, 'duplicates': 0, 'events': [{'event_id': 'fe939405-adc7-4a5b-8774-d78901ac330a', 'provider_event_id': 'CHAOS-LATE_SETTLEMENT-1-SETTLEMENT_CONFIRMED-010', 'event_type': 'SETTLEMENT_CONFIRMED', 'source': 'SETTLEMENT', 'status': 'CONFIRMED', 'event_timestamp': datetime.datetime(2026, 10, 3, 19, 13, tzinfo=zoneinfo.ZoneInfo(key='Asia/Dhaka')), 'reference_id': 'CHAOS-LATE_SETTLEMENT-1-settlement-ref', 'latency_ms': 120, 'metadata': None}]}"
+          },
+          {
+            "name": "blocked_by_fresh_evidence_gate",
+            "held": true,
+            "detail": "decision='RECOVERY_BLOCKED' blocked_reason='INSUFFICIENT_EVIDENCE'"
+          },
+          {
+            "name": "provider_reference_null_on_row",
+            "held": true,
+            "detail": "row references [None]"
+          },
+          {
+            "name": "tx_never_limit_released",
+            "held": true,
+            "detail": "tx state 'RECOVERY_PENDING'"
+          },
+          {
+            "name": "ledger_not_released",
+            "held": true,
+            "detail": "ledger entry None"
+          },
+          {
+            "name": "decision_blocked",
+            "held": true,
+            "detail": "decision='RECOVERY_BLOCKED' status='BLOCKED'"
+          }
+        ]
+      },
+      "CONCURRENT_RECOVERY": {
+        "verdict": "PASS",
+        "invariants_held": 5,
+        "invariants_total": 5,
+        "invariants": [
+          {
+            "name": "no_thread_errors",
+            "held": true,
+            "detail": "errors=[] hung=False"
+          },
+          {
+            "name": "exactly_one_provider_reference",
+            "held": true,
+            "detail": "1 of 1 rows carry a reference"
+          },
+          {
+            "name": "released_exactly_once",
+            "held": true,
+            "detail": "ledger released=1200.0 rows released sum=1200.0 tx amount=1200.00"
+          },
+          {
+            "name": "exactly_one_non_replay_decision",
+            "held": true,
+            "detail": "thread decisions=['AUTO_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED']"
+          },
+          {
+            "name": "tx_limit_released",
+            "held": true,
+            "detail": "tx state 'LIMIT_RELEASED'"
+          }
+        ]
+      }
+    }
+  },
+  "e3_chaos_reliability": [
+    {
+      "scenario": "GATEWAY_TIMEOUT",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "AUTO_RECOVERED",
+        "status": "VERIFIED",
+        "recovery_id": "b4cfda9a-bbac-40c6-841c-6d178ac93bab",
+        "provider_reference": "REL-3d2beb49",
+        "blocked_reason": null
+      },
+      "invariants_held": 4,
+      "invariants_total": 4,
+      "invariants": [
+        {
+          "name": "one_recovery_row",
+          "held": true,
+          "detail": "1 recovery rows for CHAOS-GATEWAY_TIMEOUT-1"
+        },
+        {
+          "name": "provider_reference_present",
+          "held": true,
+          "detail": "provider_reference='REL-3d2beb49'"
+        },
+        {
+          "name": "ledger_released_once",
+          "held": true,
+          "detail": "ledger entry {'transaction_id': 'CHAOS-GATEWAY_TIMEOUT-1', 'held_amount': 1200.0, 'released_amount': 1200.0, 'provider_reference': 'REL-3d2beb49', 'status': 'RELEASED', 'currency': 'BDT'}"
+        },
+        {
+          "name": "tx_limit_released",
+          "held": true,
+          "detail": "tx state 'LIMIT_RELEASED'"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "GATEWAY_ERROR",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "AUTO_RECOVERED",
+        "status": "VERIFIED",
+        "recovery_id": "aa09ca61-eb86-48cf-8540-e806847b9685",
+        "provider_reference": "REL-aba7d46c",
+        "blocked_reason": null
+      },
+      "invariants_held": 4,
+      "invariants_total": 4,
+      "invariants": [
+        {
+          "name": "one_recovery_row",
+          "held": true,
+          "detail": "1 recovery rows for CHAOS-GATEWAY_ERROR-1"
+        },
+        {
+          "name": "provider_reference_present",
+          "held": true,
+          "detail": "provider_reference='REL-aba7d46c'"
+        },
+        {
+          "name": "ledger_released_once",
+          "held": true,
+          "detail": "ledger entry {'transaction_id': 'CHAOS-GATEWAY_ERROR-1', 'held_amount': 1200.0, 'released_amount': 1200.0, 'provider_reference': 'REL-aba7d46c', 'status': 'RELEASED', 'currency': 'BDT'}"
+        },
+        {
+          "name": "tx_limit_released",
+          "held": true,
+          "detail": "tx state 'LIMIT_RELEASED'"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "MERCHANT_TIMEOUT",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "AUTO_RECOVERED",
+        "status": "VERIFIED",
+        "recovery_id": "4e14101e-29a2-40c8-9b0d-208bd55fe6f0",
+        "provider_reference": "REL-884d0357",
+        "blocked_reason": null
+      },
+      "invariants_held": 4,
+      "invariants_total": 4,
+      "invariants": [
+        {
+          "name": "one_recovery_row",
+          "held": true,
+          "detail": "1 recovery rows for CHAOS-MERCHANT_TIMEOUT-1"
+        },
+        {
+          "name": "provider_reference_present",
+          "held": true,
+          "detail": "provider_reference='REL-884d0357'"
+        },
+        {
+          "name": "ledger_released_once",
+          "held": true,
+          "detail": "ledger entry {'transaction_id': 'CHAOS-MERCHANT_TIMEOUT-1', 'held_amount': 1200.0, 'released_amount': 1200.0, 'provider_reference': 'REL-884d0357', 'status': 'RELEASED', 'currency': 'BDT'}"
+        },
+        {
+          "name": "tx_limit_released",
+          "held": true,
+          "detail": "tx state 'LIMIT_RELEASED'"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "LATE_SETTLEMENT",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "RECOVERY_BLOCKED",
+        "status": "BLOCKED",
+        "recovery_id": "d9ada4ac-0768-4bfa-885d-eb9959300b30",
+        "provider_reference": null,
+        "blocked_reason": null
+      },
+      "invariants_held": 6,
+      "invariants_total": 6,
+      "invariants": [
+        {
+          "name": "late_settlement_ingested",
+          "held": true,
+          "detail": "ingest result {'transaction_id': 'CHAOS-LATE_SETTLEMENT-1', 'created': 1, 'duplicates': 0, 'events': [{'event_id': 'fe939405-adc7-4a5b-8774-d78901ac330a', 'provider_event_id': 'CHAOS-LATE_SETTLEMENT-1-SETTLEMENT_CONFIRMED-010', 'event_type': 'SETTLEMENT_CONFIRMED', 'source': 'SETTLEMENT', 'status': 'CONFIRMED', 'event_timestamp': datetime.datetime(2026, 10, 3, 19, 13, tzinfo=zoneinfo.ZoneInfo(key='Asia/Dhaka')), 'reference_id': 'CHAOS-LATE_SETTLEMENT-1-settlement-ref', 'latency_ms': 120, 'metadata': None}]}"
+        },
+        {
+          "name": "blocked_by_fresh_evidence_gate",
+          "held": true,
+          "detail": "decision='RECOVERY_BLOCKED' blocked_reason='INSUFFICIENT_EVIDENCE'"
+        },
+        {
+          "name": "provider_reference_null_on_row",
+          "held": true,
+          "detail": "row references [None]"
+        },
+        {
+          "name": "tx_never_limit_released",
+          "held": true,
+          "detail": "tx state 'RECOVERY_PENDING'"
+        },
+        {
+          "name": "ledger_not_released",
+          "held": true,
+          "detail": "ledger entry None"
+        },
+        {
+          "name": "decision_blocked",
+          "held": true,
+          "detail": "decision='RECOVERY_BLOCKED' status='BLOCKED'"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "DUPLICATE_EVENT",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "AUTO_RECOVERED",
+        "status": "VERIFIED",
+        "recovery_id": "58521e01-e183-4ddb-8560-1f8270d3f3a3",
+        "provider_reference": "REL-ee8a9d7f",
+        "blocked_reason": null
+      },
+      "invariants_held": 5,
+      "invariants_total": 5,
+      "invariants": [
+        {
+          "name": "second_ingest_all_duplicates",
+          "held": true,
+          "detail": "first={'transaction_id': 'CHAOS-DUPLICATE_EVENT-1', 'created': 5, 'duplicates': 0, 'events': [{'event_id': '5c7b3806-61a2-47f5-8715-b780e969197a', 'provider_event_id': 'CHAOS-DUPLICATE_EVENT-1-CUSTOMER_DEBIT_CONFIRMED-000', 'event_type': 'CUSTOMER_DEBIT_CONFIRMED', 'source': 'BANK', 'status': 'CONFIRMED', 'event_timestamp': datetime.datetime(2026, 10, 3, 19, 4, 0, 120000, tzinfo=zoneinfo.ZoneInfo(key='Asia/Dhaka')), 'reference_id': 'CHAOS-DUPLICATE_EVENT-1-bank_debit-ref', 'latency_ms': 120, 'metadata': None}, {'event_id': '3afcbd55-538c-43e2-9288-f40e06bc3c70', 'provider_event_id': 'CHAOS-DUPLICATE_EVENT-1-GATEWAY_REQUEST_SENT-001', 'event_type': 'GATEWAY_REQUEST_SENT', 'source': 'GATEWAY', 'status': 'OBSERVED', 'event_timestamp': datetime.datetime(2026, 10, 3, 19, 4, 0, 280000, tzinfo=zoneinfo.ZoneInfo(key='Asia/Dhaka')), 'reference_id': 'CHAOS-DUPLICATE_EVENT-1-gateway-ref', 'latency_ms': 160, 'metadata': None}, {'event_id': 'dc36cc7f-cb60-4057-af51-842d64e18908', 'provider_event_id': 'CHAOS-DUPLICATE_EVENT-1-GATEWAY_RESPONSE_RECEIVED-002', 'event_type': 'GATEWAY_RESPONSE_RECEIVED', 'source': 'GATEWAY', 'status': 'CONFIRMED', 'event_timestamp': datetime.datetime(2026, 10, 3, 19, 4, 0, 480000, tzinfo=zoneinfo.ZoneInfo(key='Asia/Dhaka')), 'reference_id': 'CHAOS-DUPLICATE_EVENT-1-gateway-ref', 'latency_ms': 200, 'metadata': None}, {'event_id': 'd528d1e5-068e-47c2-8def-7706e9ce7405', 'provider_event_id': 'CHAOS-DUPLICATE_EVENT-1-MERCHANT_CONFIRMATION_REQUESTED-003', 'event_type': 'MERCHANT_CONFIRMATION_REQUESTED', 'source': 'MERCHANT', 'status': 'OBSERVED', 'event_timestamp': datetime.datetime(2026, 10, 3, 19, 4, 0, 720000, tzinfo=zoneinfo.ZoneInfo(key='Asia/Dhaka')), 'reference_id': 'CHAOS-DUPLICATE_EVENT-1-merchant_confirmation-ref', 'latency_ms': 240, 'metadata': None}, {'event_id': '66c4c191-4036-496c-b911-bac9a43f7cec', 'provider_event_id': 'CHAOS-DUPLICATE_EVENT-1-MERCHANT_CONFIRMATION_TIMEOUT-004', 'event_type': 'MERCHANT_CONFIRMATION_TIMEOUT', 'source': 'MERCHANT', 'status': 'TIMEOUT', 'event_timestamp': datetime.datetime(2026, 10, 3, 19, 4, 3, 810000, tzinfo=zoneinfo.ZoneInfo(key='Asia/Dhaka')), 'reference_id': 'CHAOS-DUPLICATE_EVENT-1-merchant_confirmation-ref', 'latency_ms': 90, 'metadata': None}]} second={'transaction_id': 'CHAOS-DUPLICATE_EVENT-1', 'created': 0, 'duplicates': 5, 'events': []}"
+        },
+        {
+          "name": "one_recovery_row",
+          "held": true,
+          "detail": "1 recovery rows for CHAOS-DUPLICATE_EVENT-1"
+        },
+        {
+          "name": "provider_reference_present",
+          "held": true,
+          "detail": "provider_reference='REL-ee8a9d7f'"
+        },
+        {
+          "name": "ledger_released_once",
+          "held": true,
+          "detail": "ledger entry {'transaction_id': 'CHAOS-DUPLICATE_EVENT-1', 'held_amount': 1200.0, 'released_amount': 1200.0, 'provider_reference': 'REL-ee8a9d7f', 'status': 'RELEASED', 'currency': 'BDT'}"
+        },
+        {
+          "name": "tx_limit_released",
+          "held": true,
+          "detail": "tx state 'LIMIT_RELEASED'"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "OUT_OF_ORDER_EVENT",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "AUTO_RECOVERED",
+        "status": "VERIFIED",
+        "recovery_id": "fee436b4-1eda-4b2d-ac68-8e6beb0102dc",
+        "provider_reference": "REL-563f1593",
+        "blocked_reason": null
+      },
+      "invariants_held": 5,
+      "invariants_total": 5,
+      "invariants": [
+        {
+          "name": "reconstruction_order_independent",
+          "held": true,
+          "detail": "root_cause='MERCHANT_CONFIRMATION_TIMEOUT' stages=(CONFIRMED, CONFIRMED, TIMEOUT, NOT_OBSERVED)"
+        },
+        {
+          "name": "one_recovery_row",
+          "held": true,
+          "detail": "1 recovery rows for CHAOS-OUT_OF_ORDER_EVENT-1"
+        },
+        {
+          "name": "provider_reference_present",
+          "held": true,
+          "detail": "provider_reference='REL-563f1593'"
+        },
+        {
+          "name": "ledger_released_once",
+          "held": true,
+          "detail": "ledger entry {'transaction_id': 'CHAOS-OUT_OF_ORDER_EVENT-1', 'held_amount': 1200.0, 'released_amount': 1200.0, 'provider_reference': 'REL-563f1593', 'status': 'RELEASED', 'currency': 'BDT'}"
+        },
+        {
+          "name": "tx_limit_released",
+          "held": true,
+          "detail": "tx state 'LIMIT_RELEASED'"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "PROVIDER_TIMEOUT",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "RECOVERY_BLOCKED",
+        "status": "FAILED",
+        "recovery_id": "22324331-3fec-46fb-9226-6ff9d8542e13",
+        "provider_reference": null,
+        "blocked_reason": null
+      },
+      "invariants_held": 6,
+      "invariants_total": 6,
+      "invariants": [
+        {
+          "name": "provider_reference_null_on_row",
+          "held": true,
+          "detail": "row references [None]"
+        },
+        {
+          "name": "tx_never_limit_released",
+          "held": true,
+          "detail": "tx state 'RECOVERY_PENDING'"
+        },
+        {
+          "name": "ledger_not_released",
+          "held": true,
+          "detail": "ledger entry {'transaction_id': 'CHAOS-PROVIDER_TIMEOUT-1', 'held_amount': 1200.0, 'released_amount': 0.0, 'provider_reference': None, 'status': 'HELD', 'currency': 'BDT'}"
+        },
+        {
+          "name": "decision_blocked",
+          "held": true,
+          "detail": "decision='RECOVERY_BLOCKED' status='FAILED'"
+        },
+        {
+          "name": "row_failed_with_provider_code",
+          "held": true,
+          "detail": "row status='FAILED' failure_reason='PROVIDER_TIMEOUT'"
+        },
+        {
+          "name": "failure_mode_cleared",
+          "held": true,
+          "detail": "provider failure injection disarmed in finally"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "PROVIDER_ERROR",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "RECOVERY_BLOCKED",
+        "status": "FAILED",
+        "recovery_id": "8971e39b-b7cf-4bf4-b44d-e66eaba2a8fa",
+        "provider_reference": null,
+        "blocked_reason": null
+      },
+      "invariants_held": 6,
+      "invariants_total": 6,
+      "invariants": [
+        {
+          "name": "provider_reference_null_on_row",
+          "held": true,
+          "detail": "row references [None]"
+        },
+        {
+          "name": "tx_never_limit_released",
+          "held": true,
+          "detail": "tx state 'RECOVERY_PENDING'"
+        },
+        {
+          "name": "ledger_not_released",
+          "held": true,
+          "detail": "ledger entry {'transaction_id': 'CHAOS-PROVIDER_ERROR-1', 'held_amount': 1200.0, 'released_amount': 0.0, 'provider_reference': None, 'status': 'HELD', 'currency': 'BDT'}"
+        },
+        {
+          "name": "decision_blocked",
+          "held": true,
+          "detail": "decision='RECOVERY_BLOCKED' status='FAILED'"
+        },
+        {
+          "name": "row_failed_with_provider_code",
+          "held": true,
+          "detail": "row status='FAILED' failure_reason='PROVIDER_ERROR'"
+        },
+        {
+          "name": "failure_mode_cleared",
+          "held": true,
+          "detail": "provider failure injection disarmed in finally"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "CONCURRENT_RECOVERY",
+      "verdict": "PASS",
+      "outcome": {
+        "decision": "AUTO_RECOVERED",
+        "status": "VERIFIED",
+        "recovery_id": "225958a1-0478-4498-b18c-169e104d4da1",
+        "provider_reference": "REL-000b3964",
+        "blocked_reason": null
+      },
+      "invariants_held": 5,
+      "invariants_total": 5,
+      "invariants": [
+        {
+          "name": "no_thread_errors",
+          "held": true,
+          "detail": "errors=[] hung=False"
+        },
+        {
+          "name": "exactly_one_provider_reference",
+          "held": true,
+          "detail": "1 of 1 rows carry a reference"
+        },
+        {
+          "name": "released_exactly_once",
+          "held": true,
+          "detail": "ledger released=1200.0 rows released sum=1200.0 tx amount=1200.00"
+        },
+        {
+          "name": "exactly_one_non_replay_decision",
+          "held": true,
+          "detail": "thread decisions=['AUTO_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED', 'ALREADY_RECOVERED']"
+        },
+        {
+          "name": "tx_limit_released",
+          "held": true,
+          "detail": "tx state 'LIMIT_RELEASED'"
+        }
+      ],
+      "note": null
+    },
+    {
+      "scenario": "DB_FAILURE_SIMULATION",
+      "verdict": "SKIP",
+      "outcome": null,
+      "invariants_held": 0,
+      "invariants_total": 0,
+      "invariants": [],
+      "note": "covered by unit tests (tests/test_recovery_concurrency_hard.py IntegrityError race paths + executor failure-injection units); cannot be injected through the running API without monkeypatching a live session"
+    }
+  ],
+  "e4_latency": {
+    "latency_snapshots": {
+      "recovery_latency_ms": {
+        "count": 48,
+        "sum_ms": 8627.725099962845,
+        "avg_ms": 179.7442729158926,
+        "min_ms": 25.627900002291426,
+        "max_ms": 345.2460999978939
+      },
+      "risk_latency_ms": {
+        "count": 1,
+        "sum_ms": 24.1,
+        "avg_ms": 24.1,
+        "min_ms": 24.1,
+        "max_ms": 24.1
+      },
+      "reconstruction_latency_ms": {
+        "count": 1,
+        "sum_ms": 0.1953999963006936,
+        "avg_ms": 0.1953999963006936,
+        "min_ms": 0.1953999963006936,
+        "max_ms": 0.1953999963006936
+      }
+    },
+    "relevant_counters": {
+      "risk_assessments_total": 42.0,
+      "recovery_blocked_total": 3.0,
+      "recovery_success_total": 13.0,
+      "recovery_failed_total": 5.0,
+      "reconstruction_total": 1.0,
+      "http_transaction_reconstruction_requests_total": 1.0,
+      "http_transaction_risk_assessment_requests_total": 1.0
+    },
+    "generated_at": "2026-10-03T00:48:21.220446+00:00"
+  }
+}
