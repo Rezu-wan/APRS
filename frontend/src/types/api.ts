@@ -485,7 +485,8 @@ export interface RecoveryRecord {
   requested_amount: string;
   released_amount: string | null;
   currency: string;
-  provider: string;
+  /** Null when the provider was never called (blocked/pending rows). */
+  provider: string | null;
   provider_reference: string | null;
   policy_version: string;
   created_at: string;
@@ -562,6 +563,12 @@ export const recoveryEvaluateResultSchema = z.object({
   assessment: recoveryAssessmentSummarySchema,
 });
 
+// The GET …/recovery endpoint serializes amounts as NUMBERS (float, from the
+// Numeric column) and provider is null whenever the provider was never
+// called (blocked/pending rows). Amounts are normalized to strings here so
+// every consumer keeps working with the display formatters.
+const amountLike = z.union([z.string(), z.number()]).transform(String);
+
 export const recoveryRecordSchema = z.object({
   transaction_id: z.string(),
   action: recoveryActionSchema,
@@ -570,10 +577,10 @@ export const recoveryRecordSchema = z.object({
   decision_reason: z.string().nullable(),
   blocked_reason: z.string().nullable(),
   failure_reason: z.string().nullable(),
-  requested_amount: z.string(),
-  released_amount: z.string().nullable(),
+  requested_amount: amountLike,
+  released_amount: amountLike.nullable(),
   currency: z.string(),
-  provider: z.string(),
+  provider: z.string().nullable(),
   provider_reference: z.string().nullable(),
   policy_version: z.string(),
   created_at: z.string(),
