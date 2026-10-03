@@ -34,6 +34,15 @@ export const queryKeys = {
   behavioral: (id: string) => ["behavioral", id] as const,
   relationships: (id: string) => ["relationships", id] as const,
   chaosScenarios: ["chaos", "scenarios"] as const,
+  // Stage 12 support workspace (see hooks/useSupport.ts) — every key starts
+  // with "support" so the SSE hook can invalidate the whole workspace at once
+  supportOverview: ["support", "overview"] as const,
+  supportSearch: (q: string) => ["support", "search", q] as const,
+  supportCustomer: (id: string) => ["support", "customer", id] as const,
+  supportTransactions: (filters: Record<string, unknown>) =>
+    ["support", "transactions", filters] as const,
+  supportCases: (filters: Record<string, unknown>) =>
+    ["support", "cases", filters] as const,
 };
 
 export function useStats() {

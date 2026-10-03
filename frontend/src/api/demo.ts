@@ -39,7 +39,7 @@ export interface DemoScenarioStatus {
     recovery_id: string;
     blocked_reason: string | null;
     provider_reference: string | null;
-    released_amount: string | null;
+    released_amount: number | null;
     currency: string;
   } | null;
   risk: { anomaly_type: string; risk_level: string } | null;
@@ -125,7 +125,7 @@ const scenarioStatusSchema = z.object({
       recovery_id: z.string(),
       blocked_reason: z.string().nullable(),
       provider_reference: z.string().nullable(),
-      released_amount: z.string().nullable(),
+      released_amount: z.number().nullable(),
       currency: z.string(),
     })
     .nullable(),

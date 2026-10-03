@@ -20,9 +20,12 @@ recovery_actions     Stage 8 autonomous recovery action — SANDBOX execution
                      record; idempotency_key is the UNIQUE anchor
 security_audit /     Stage 9 security audit trail + write-through persistence
 sandbox_ledger_entries for the simulated sandbox ledger
-customers /          synthetic-dataset reference data (read-only): customer
-merchants            profiles and the merchant catalog the UI resolves ids
-                     against
+customers/accounts/  Support workspace (db-branch dataset): customer
+devices/merchants/   registry + customer-level behavior signals, loaded
+customer_behavior_   from data/dataset/*.csv by scripts/load_dataset_db.py;
+signals              display/investigation data, never decision inputs
+support_cases        customer-care ticket queue (OPEN → … → CLOSED)
+customer_reports     customer-filed problem reports (evidence only)
 
 Timestamps are timezone-aware UTC. UUIDs are stored as 36-char strings for
 portability across PostgreSQL and SQLite.
@@ -82,13 +85,6 @@ class Transaction(Base):
     account_age_days: Mapped[int] = mapped_column(Integer, default=0)
     failure_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
-    # descriptive payment attributes (from the payment itself, not risk
-    # internals) — nullable: rows created before the dataset loader ran
-    transaction_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    channel: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    direction: Mapped[str | None] = mapped_column(String(8), nullable=True)
-    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
-
     current_state: Mapped[str] = mapped_column(
         String(32), default=TransactionState.INITIATED, index=True
     )
@@ -101,6 +97,19 @@ class Transaction(Base):
     risk_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     safe_to_release_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
     safe_to_release: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    # Support-workspace enrichment (db-branch dataset): context about HOW the
+    # payment was made. Null for transactions created through the ingest API
+    # (the API does not ask for them); populated for rows loaded from
+    # data/dataset/transactions.csv by scripts/load_dataset_db.py. Never part
+    # of the decision path — display/investigation context only.
+    account_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    device_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    counterparty: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    direction: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    transaction_type: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    channel: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
@@ -311,8 +320,7 @@ class RecoveryActionRecord(Base):
     risk_assessment_id: Mapped[str | None] = mapped_column(String(36), index=True)
 
     decision_reason: Mapped[str] = mapped_column(Text)
-    # 96: dataset blocked-reason sentences run to 68 chars
-    blocked_reason: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    blocked_reason: Mapped[str | None] = mapped_column(String(48), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # sandbox provider ("mock") + its result/verification snapshots
@@ -390,14 +398,10 @@ class SandboxLedgerEntry(Base):
 class CustomerReport(Base):
     """Customer problem report — DECISION EVIDENCE ONLY, never an action.
 
-    A customer files a problem against one of THEIR transactions (double
-    charge, failed payment, …) plus where in the payment flow it happened.
-    The report never changes transaction state, never influences the
-    recovery policy by itself, and is never a decision: it is stored
-    evidence that staff can see (and that a later risk assessment may take
-    into account through the existing customer_reported_failure input, which
-    remains SYSTEM/ADMIN-only). One report per (transaction, customer):
-    re-filing replays the stored report (already_reported=true)."""
+    A customer files a problem against one of THEIR transactions plus where in
+    the payment flow it happened. The report never changes transaction state
+    and never acts as a policy decision by itself.
+    """
 
     __tablename__ = "customer_reports"
     __table_args__ = (
@@ -413,13 +417,9 @@ class CustomerReport(Base):
     )
     customer_id: Mapped[str] = mapped_column(String(64), index=True)
 
-    # closed vocabularies — validated at the schema layer
     problem_type: Mapped[str] = mapped_column(String(32))
     stage: Mapped[str] = mapped_column(String(32))
     description: Mapped[str] = mapped_column(Text, default="")
-
-    # OPEN | UNDER_REVIEW | RESOLVED | REJECTED — moved by STAFF workflows
-    # only; filing always creates OPEN.
     status: Mapped[str] = mapped_column(String(16), default="OPEN")
 
     created_at: Mapped[datetime] = mapped_column(
@@ -433,34 +433,146 @@ class CustomerReport(Base):
 
 
 class Customer(Base):
-    """Customer identity/profile (synthetic dataset). Read-only reference data:
-    the API only ever serves a CUSTOMER their OWN row — auth still comes from
-    the X-API-Key binding, never from this table."""
+    """Customer registry (support workspace). 100% SYNTHETIC display data
+    loaded from the db-branch dataset (data/dataset/customers.csv) — clearly
+    fake identities (example.com emails, generated phone numbers). The app's
+    ownership key remains transactions.user_id == customers.customer_id.
+    Never a decision input."""
 
     __tablename__ = "customers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     customer_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     full_name: Mapped[str] = mapped_column(String(120))
-    email: Mapped[str] = mapped_column(String(160))
-    phone: Mapped[str] = mapped_column(String(40), default="")
-    country: Mapped[str] = mapped_column(String(2), default="BD")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    status: Mapped[str] = mapped_column(String(16), default="active")
-    segment: Mapped[str] = mapped_column(String(16), default="retail")
-    risk_profile: Mapped[str] = mapped_column(String(16), default="LOW")
+    email: Mapped[str] = mapped_column(String(160), index=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    segment: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    risk_profile: Mapped[str | None] = mapped_column(String(16), nullable=True)
     archetype: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    accounts: Mapped[list["Account"]] = relationship(back_populates="customer")
+
+
+class Account(Base):
+    """Customer account (support workspace, db-branch dataset). Display and
+    investigation context only — balances are synthetic."""
+
+    __tablename__ = "accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    customer_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("customers.customer_id"), index=True
+    )
+    account_type: Mapped[str] = mapped_column(String(32))
+    currency: Mapped[str] = mapped_column(String(3), default="BDT")
+    balance: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0"))
+    opening_balance: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2), default=Decimal("0")
+    )
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    # CSV column is "primary" (a reserved word in SQL) — stored as is_primary
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    last_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    customer: Mapped[Customer] = relationship(back_populates="accounts")
+
+
+class Device(Base):
+    """Known device (support workspace, db-branch dataset). Transactions
+    reference devices via transactions.device_id; "same device used by other
+    customers" is derived by querying that column, no edge table needed."""
+
+    __tablename__ = "devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    device_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    os: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    trusted: Mapped[bool] = mapped_column(Boolean, default=False)
+    first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Merchant(Base):
-    """Merchant catalog (synthetic dataset) — resolution data so the UI can
-    show a merchant's name/category instead of the raw MER- id."""
+    """Merchant registry (support workspace, db-branch dataset). Gives
+    support agents a human-readable merchant name/category instead of the
+    raw merchant_id string."""
 
     __tablename__ = "merchants"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     merchant_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(120))
-    category: Mapped[str] = mapped_column(String(40), default="")
-    country: Mapped[str] = mapped_column(String(2), default="BD")
-    risk_tier: Mapped[str] = mapped_column(String(16), default="LOW")
+    category: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    risk_tier: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    traffic_weight: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CustomerBehaviorSignal(Base):
+    """Customer-level behavior signal (db-branch dataset; 10 signals per
+    customer). Read-only ADVISORY display data for support agents — the same
+    honesty rules as the Stage 11 per-transaction signals apply: a signal is
+    a flag for a human, never a decision."""
+
+    __tablename__ = "customer_behavior_signals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    behavior_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    customer_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("customers.customer_id"), index=True
+    )
+    signal_name: Mapped[str] = mapped_column(String(48), index=True)
+    signal_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    unit: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    signal_level: Mapped[str] = mapped_column(String(8), default="UNKNOWN")
+    baseline_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    window: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SupportCase(Base):
+    """Customer-care support case (ticket) tied to one transaction. This is
+    the SUPPORT-team workflow record — distinct from recovery_actions (the
+    engine's execution record) and never a substitute for the Digital Twin
+    log. status moves through CASE_STATUS_TRANSITIONS (api/services/
+    support_service.py); notes is an append-only JSON thread."""
+
+    __tablename__ = "support_cases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    case_id: Mapped[str] = mapped_column(
+        String(36), unique=True, default=new_event_id, index=True
+    )
+    transaction_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("transactions.transaction_id"), index=True
+    )
+    # denormalized from transactions.user_id for queue slices; set at
+    # creation from the transaction, never updated
+    customer_id: Mapped[str] = mapped_column(String(64), index=True)
+
+    subject: Mapped[str] = mapped_column(String(140))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(24), default="OPEN", index=True)
+    priority: Mapped[str] = mapped_column(String(8), default="MEDIUM", index=True)
+
+    created_by: Mapped[str] = mapped_column(String(64))  # API-key NAME, never the raw key
+    assignee: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    notes: Mapped[list] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, index=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

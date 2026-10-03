@@ -46,6 +46,7 @@ from api.routes import (
     risk_assessment,
     sandbox,
     stats,
+    support,
     temporal,
     transactions,
 )
@@ -134,6 +135,7 @@ app.include_router(metrics.router)
 app.include_router(temporal.router)
 app.include_router(policy_simulator.router)
 app.include_router(chaos.router)
+app.include_router(support.router)
 
 if get_settings().cors_origin_list:
     from fastapi.middleware.cors import CORSMiddleware

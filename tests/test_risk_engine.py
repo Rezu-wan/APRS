@@ -28,7 +28,7 @@ from api.services.risk_engine import persist_assessment, run_assessment
 
 # the session-scoped client fixture creates the test schema; engine tests
 # seed rows directly through SessionLocal but depend on it for the schema
-from tests.conftest import client  # noqa: F401
+from tests.conftest import SYSTEM_KEY, client  # noqa: F401
 
 _T0 = datetime(2026, 10, 1, 10, 0, 0, tzinfo=timezone.utc)
 
@@ -260,3 +260,52 @@ def test_new_events_new_assessment(client):
     assert reused_second is False
     assert second.assessment_id != first.assessment_id
     assert _count_records(tid) == 2
+
+
+def test_dataset_evidence_without_source_reads_back_ok(client):
+    """db-branch dataset rows (risk_assessments.csv) store evidence items
+    without the source column; the GET read path must stamp the honest
+    DATASET provenance instead of 500ing (regression for the support
+    workspace browser E2E finding)."""
+    from api.schemas.risk_assessment import SOURCE_DATASET
+    from api.services.risk_engine import assessment_from_record
+
+    tid = _unique_id()
+    _seed_tx(tid)
+    db = SessionLocal()
+    try:
+        db.add(
+            RiskAssessmentRecord(
+                assessment_id=f"RSA-{uuid.uuid4().hex[:12]}",
+                transaction_id=tid,
+                evidence_fingerprint="dataset-seed-fingerprint",
+                evidence=[{"code": "HIGH_RETRY", "description": "3 retries", "severity": "MEDIUM"}],
+                triggered_rules=[],
+                anomaly_type=ANOMALY_SUSPICIOUS,
+                risk_level=RISK_HIGH,
+                risk_score=0.7,
+                ml_anomaly_score=0.5,
+                deterministic_risk_score=0.7,
+                recovery_candidate=True,
+                model_version="synthetic-v1",
+                rule_version="1",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        db.commit()
+        record = (
+            db.query(RiskAssessmentRecord)
+            .filter(RiskAssessmentRecord.transaction_id == tid)
+            .one()
+        )
+        assessment = assessment_from_record(record)
+        assert assessment.evidence[0].source == SOURCE_DATASET
+    finally:
+        db.close()
+
+    # and the HTTP read path serves the row instead of a 500
+    resp = client.get(
+        f"/api/v1/transactions/{tid}/risk-assessment", headers=SYSTEM_KEY
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["assessment"]["evidence"][0]["source"] == SOURCE_DATASET
