@@ -8,6 +8,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthProvider, useAuth } from "../context/AuthContext";
+import { clearSession, getSession, setSession } from "../lib/session";
 import { Login } from "../pages/Login";
 import { apiError, mockGetMe, mockGetMeWithKey, resetApiMocks } from "../test/mocks";
 import { makeTestQueryClient } from "../test/utils";
@@ -16,6 +17,9 @@ afterEach(() => cleanup());
 beforeEach(() => {
   resetApiMocks();
   sessionStorage.clear();
+  // the api key lives in module memory next to sessionStorage — clear both
+  // so tests never leak auth state into each other
+  clearSession();
 });
 
 function DashboardStub() {
@@ -76,22 +80,24 @@ describe("Login", () => {
 
     expect(await screen.findByText("Dashboard loaded")).toBeInTheDocument();
 
+    // The API key never persists (support-branch change): sessionStorage
+    // holds only role/keyName; the key stays in module memory for the
+    // current JS context, so getSession() still hands it to the api layer.
     const raw = sessionStorage.getItem("prdt.auth");
     expect(raw).not.toBeNull();
-    const session = JSON.parse(raw as string) as {
-      apiKey: string;
+    const persisted = JSON.parse(raw as string) as {
       role: string;
       keyName: string;
     };
-    expect(session).toMatchObject({ apiKey: "good-key", role: "ADMIN", keyName: "admin-key" });
+    expect(persisted).toMatchObject({ role: "ADMIN", keyName: "admin-key" });
+    expect(persisted).not.toHaveProperty("apiKey");
+    expect(getSession()).toMatchObject({ apiKey: "good-key", role: "ADMIN", keyName: "admin-key" });
   });
 
   it("logout clears the session and returns to /login", async () => {
-    // Prime a stored session; AuthProvider validates it on mount via getMe.
-    sessionStorage.setItem(
-      "prdt.auth",
-      JSON.stringify({ apiKey: "good-key", role: "ADMIN", keyName: "admin-key" })
-    );
+    // Prime the session the way Login does (memory key + storage record);
+    // AuthProvider validates it on mount via getMe.
+    setSession({ apiKey: "good-key", role: "ADMIN", keyName: "admin-key" });
     mockGetMe.mockResolvedValue({ role: "ADMIN", key_name: "admin-key" });
 
     render(
@@ -113,6 +119,8 @@ describe("Login", () => {
     await waitFor(() => {
       expect(sessionStorage.getItem("prdt.auth")).toBeNull();
     });
+    // logout clears the in-memory key too — the session is fully gone
+    expect(getSession()).toBeNull();
     expect(await screen.findByLabelText("API key")).toBeInTheDocument();
   });
 });
