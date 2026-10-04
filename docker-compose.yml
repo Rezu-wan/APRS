@@ -1,13 +1,16 @@
 services:
   api:
+    restart: unless-stopped
     build: .
     environment:
       ENVIRONMENT: production
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-payment_app}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-payment_recovery}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
       API_KEY_SYSTEM: ${API_KEY_SYSTEM:?set API_KEY_SYSTEM in .env (dev- keys are rejected in production)}
       API_KEY_ADMIN: ${API_KEY_ADMIN:?set API_KEY_ADMIN in .env}
       API_KEY_SUPPORT: ${API_KEY_SUPPORT:?set API_KEY_SUPPORT in .env}
       API_KEY_CUSTOMER: ${API_KEY_CUSTOMER:?set API_KEY_CUSTOMER in .env}
+      CUSTOMER_API_KEYS: ${CUSTOMER_API_KEYS:-}
       AI_PROVIDER: ${AI_PROVIDER:-mock}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
@@ -19,12 +22,15 @@ services:
       - "8000:8000"
 
   frontend:
+    restart: unless-stopped
     build:
       context: ./frontend
       args:
         # Public value (inlined into the JS bundle by Vite): the URL the
-        # BROWSER uses to reach the api. Defaults to the host-mapped port.
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api/v1}
+        # BROWSER uses to reach the api. Default is origin-relative -- the
+        # frontend nginx proxies /api/ to the api service, so the same image
+        # works on localhost, a LAN IP, or a public domain (no CORS at all).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
     depends_on:
       - api
     ports:
@@ -32,6 +38,7 @@ services:
       - "5173:8080"
 
   postgres:
+    restart: unless-stopped
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-payment_app}
@@ -45,8 +52,32 @@ services:
       timeout: 5s
       retries: 10
 
+  # Public entrypoint (optional profile): automatic Let's Encrypt HTTPS for
+  # the whole app on one domain. Start with:
+  #   DOMAIN=app.example.com docker compose --profile proxy up -d
+  # Requires DNS for $DOMAIN to point at this host and ports 80/443 open.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    environment:
+      # Only required with --profile proxy; left empty otherwise (compose
+      # interpolates every service regardless of active profiles).
+      DOMAIN: ${DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:
 
 # Note: ML model files (models/*.joblib) are baked into the api image via
 # `COPY models/` in the Dockerfile -- no runtime volume/mount is needed.

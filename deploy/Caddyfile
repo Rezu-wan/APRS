@@ -1,0 +1,18 @@
+# Public entrypoint: automatic HTTPS (Let's Encrypt) for the whole app.
+# $DOMAIN comes from the environment (see docker-compose.yml caddy service).
+#
+# One origin serves everything:
+#   /health        -> api (real JSON health for uptime checks)
+#   everything else -> frontend nginx (serves the SPA AND proxies /api/
+#                      to the api service -- see frontend/nginx.conf)
+{$DOMAIN} {
+	encode gzip zstd
+
+	handle /health {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy frontend:8080
+	}
+}

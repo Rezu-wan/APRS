@@ -15,6 +15,15 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 os.environ["DATABASE_URL"] = "sqlite:///./data/test.db"
 os.environ["ENVIRONMENT"] = "test"
 
+# Pin the API keys too: pydantic-settings gives a real .env file precedence
+# over the config class defaults, so a deployment .env with production keys
+# would otherwise make every authenticated test 401.
+os.environ["API_KEY_SYSTEM"] = "dev-system-key"
+os.environ["API_KEY_ADMIN"] = "dev-admin-key"
+os.environ["API_KEY_SUPPORT"] = "dev-support-key"
+os.environ["API_KEY_CUSTOMER"] = "dev-customer-key"
+os.environ["CUSTOMER_API_KEYS"] = "dev-customer-alice:alice,dev-customer-bob:bob"
+
 # remove a stale test database so every run starts from a clean schema
 _test_db = PROJECT_ROOT / "data" / "test.db"
 if _test_db.exists():
