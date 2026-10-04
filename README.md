@@ -165,7 +165,7 @@ All Node dependencies are in `frontend/package.json`:
 ### 1. Clone the Repository
 ```bash
 git clone <repository-url>
-cd Hackathon
+cd APRS
 ```
 
 ### 2. Backend Setup
@@ -713,7 +713,7 @@ Includes counters for: transactions, reconstructions, risk assessments, recovery
 ## Project Structure
 
 ```
-Hackathon/
+APRS/
 ├── api/                          # FastAPI backend
 │   ├── core/                     # Core configuration and state machine
 │   ├── db/                       # SQLAlchemy models and migrations
@@ -809,24 +809,6 @@ Hackathon/
 - Comprehensive test coverage (99%+)
 - Production-ready architecture patterns
 - Full separation of AI (explanations) from decisions (policy)
-
----
-
-## License
-
-*To be determined by project owner*
-
----
-
-## Contributing
-
-*To be determined by project owner*
-
----
-
-## Support & Contact
-
-*To be determined by project owner*
 
 ---
 
