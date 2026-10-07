@@ -4,7 +4,6 @@ Autonomous Payment Recovery System — an intelligent, event-driven platform for
 
 ---
 
-## Innovation
 
 **Distinctive contribution:** APRS separates *prediction* from *execution*. ML risk assessment advises, a versioned deterministic policy (`autonomous-v1`) decides eligibility, and an independent, pure **fresh-evidence safety gate** stands between an eligible-looking decision and the money — re-deriving state from events at execution time (`api/services/recovery_executor.py:188`) — so no stale or invalid decision can move funds. An append-only **Digital Twin** makes every decision and every veto replayable.
 
