@@ -4,6 +4,98 @@ Autonomous Payment Recovery System — an intelligent, event-driven platform for
 
 ---
 
+## Solution of Project Feedbacks
+
+## AI/ML Dataset & Evaluation
+
+The ML pipeline is trained and evaluated on the main APRS transaction
+dataset containing 10,506 transactions spanning October 2025 to September
+2026.
+
+| Property | Value |
+|---|---:|
+| Transactions | 10,506 |
+| Time range | Oct 2025 – Sep 2026 |
+| Test size | 20% |
+| Evaluation splits | Stratified + Chronological |
+| Random seed | 42 |
+| XGBoost | 3.4.1 |
+| Scikit-learn | 1.9.1 |
+
+### Outcome Distribution
+
+| Outcome | Count |
+|---|---:|
+| SUCCESS | 9,334 |
+| MANUAL_REVIEW | 518 |
+| RECOVERY_REJECTED | 385 |
+| STALLED | 231 |
+| LIMIT_RELEASED | 38 |
+
+Because the dataset is class-imbalanced, model performance is evaluated
+using macro-F1, weighted-F1, ROC-AUC/PR-AUC, confusion matrices, and
+chronological holdout evaluation rather than accuracy alone.
+
+## ML Models & Results
+
+APRS uses three XGBoost-based ML tasks:
+
+1. **Transaction Outcome Classifier**
+   - Predicts transaction outcome/failure type.
+   - Stratified ROC-AUC: 0.735
+   - Chronological ROC-AUC: 0.744
+
+   **Confusion Matrix**
+
+![Transaction outcome confusion matrix](reports/main_dataset/confusion_matrix_failure.png)
+
+**Feature Importance**
+
+![Transaction outcome feature importance](reports/main_dataset/feature_importance_failure.png)
+
+2. **Recovery Safety Classifier**
+   - Predicts whether recovery is safe for automatic release.
+   - Stratified ROC-AUC: 0.870
+   - Stratified PR-AUC: 0.584
+   - Macro-F1: 0.719
+   - Chronological ROC-AUC: 0.844
+
+   **Confusion Matrix**
+
+![Recovery safety confusion matrix](reports/main_dataset/confusion_matrix_recovery.png)
+
+**Feature Importance**
+
+![Recovery safety feature importance](reports/main_dataset/feature_importance_recovery.png)
+
+3. **Risk Score Regressor**
+   - Predicts the transaction risk score.
+   - Stratified R²: 0.362
+   - MAE: 0.081
+   - RMSE: 0.100
+   - Chronological R²: 0.330
+
+**Feature Importance**
+
+![Risk score feature importance](reports/main_dataset/feature_importance_risk.png)
+
+   ### Leakage Prevention
+
+A leakage diagnostic was performed for the recovery-safety classifier.
+
+| Pipeline | Accuracy | Macro-F1 |
+|---|---:|---:|
+| With leaked risk_score | 0.9382 | 0.9063 |
+| Clean pipeline | 0.8221 | 0.7193 |
+
+`risk_score` is excluded from the recovery model because the
+`safe_to_release` target was derived from risk_score during dataset
+generation. This prevents artificially inflated evaluation results.
+
+
+
+---
+
 ## Project Overview
 
 ### The Problem
