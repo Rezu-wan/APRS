@@ -4,6 +4,7 @@ Autonomous Payment Recovery System — an intelligent, event-driven platform for
 
 ---
 
+## Innovation
 
 **Distinctive contribution:** APRS separates *prediction* from *execution*. ML risk assessment advises, a versioned deterministic policy (`autonomous-v1`) decides eligibility, and an independent, pure **fresh-evidence safety gate** stands between an eligible-looking decision and the money — re-deriving state from events at execution time (`api/services/recovery_executor.py:188`) — so no stale or invalid decision can move funds. An append-only **Digital Twin** makes every decision and every veto replayable.
 
@@ -300,7 +301,7 @@ All Python dependencies are pinned in `requirements.txt`:
 - sqlalchemy, alembic, psycopg (PostgreSQL driver)
 - scikit-learn, xgboost, pandas, numpy
 - openai (for GenAI provider)
-- python-dotenv, python-multipart
+- python-dotenv
 
 All Node dependencies are in `frontend/package.json`:
 - react, react-dom, react-router-dom
@@ -326,13 +327,15 @@ cd APRS
 
 #### Create Python Virtual Environment
 ```bash
-python3.12 -m venv .venv
+# Python 3.12+ recommended
+python -m venv .venv          # Windows (verified)
+python3.12 -m venv .venv      # Linux/macOS with versioned interpreter
 
 # Activate (Linux/macOS)
 source .venv/bin/activate
 
-# Activate (Windows)
-.venv\Scripts\activate
+# Activate (Windows PowerShell)
+.venv\Scripts\Activate.ps1
 ```
 
 #### Install Dependencies
@@ -358,11 +361,8 @@ The repository includes pre-trained models in `models/`. To retrain:
 # Generate synthetic dataset (25k rows)
 python scripts/generate_dataset.py
 
-# Train ML models
+# Train all models (evaluation metrics and charts are produced as part of training)
 python -m ml.train
-
-# Evaluate models
-python -m ml.evaluate
 ```
 
 ### 3. Frontend Setup
@@ -423,7 +423,7 @@ Create a `.env` file in the project root with the following variables:
 | `API_KEY_SYSTEM` | `dev-system-key` | API key for SYSTEM role (full access) |
 | `API_KEY_ADMIN` | `dev-admin-key` | API key for ADMIN role (system control) |
 | `API_KEY_SUPPORT` | `dev-support-key` | API key for SUPPORT role (read + customer service) |
-| `API_KEY_CUSTOMER` | `dev-customer-CUST-000001` | API key for CUSTOMER role (own data only) |
+| `API_KEY_CUSTOMER` | `dev-customer-key` | API key for CUSTOMER role (own data only) |
 | `CUSTOMER_API_KEYS` | *(empty)* | Customer key mappings: `key1:customer_id1,key2:customer_id2` |
 
 **Generate secure keys for production:**
@@ -567,6 +567,14 @@ python -m alembic history
 
 ### Demo & Testing Scripts
 
+**Note**: These scripts call the live REST API (default `--api-url http://127.0.0.1:8000`), so start the backend first:
+
+```bash
+uvicorn api.main:app --host 127.0.0.1 --port 8000
+```
+
+Then, from a second terminal:
+
 ```bash
 # Seed demo scenarios (S1-S6)
 python -m scripts.seed_demo
@@ -582,8 +590,8 @@ python -m scripts.stage8_e2e    # Autonomous recovery
 python -m scripts.stage9_e2e    # Security flow
 python -m scripts.stage11_e2e   # Event-driven intelligence
 
-# Policy simulation experiment
-python -m scripts.stage11_experiment --corpus demo --policies all
+# Policy simulation experiment (compares all registered policies on the demo corpus)
+python -m scripts.stage11_experiment
 
 # Payment event simulator
 python -m scripts.payment_event_simulator --transaction-id TXN-TEST --scenario gateway_timeout --ingest
@@ -620,7 +628,8 @@ python -m scripts.payment_event_simulator --transaction-id TXN-TEST --scenario g
 # From project root with activated venv
 python -m pytest tests/ -v
 
-# With coverage report
+# With coverage report (requires the optional pytest-cov package,
+# which is not pinned in requirements.txt: pip install pytest-cov)
 python -m pytest tests/ --cov=api --cov-report=html
 
 # Run specific test file
@@ -630,12 +639,13 @@ python -m pytest tests/test_recovery_executor.py -v
 python -m pytest tests/ -k "reconstruction" -v
 ```
 
-**Expected Results** (verified 2026-09-22): 463 passed, 1 skipped — 15 known failures remain, all date-anchored test fixtures outside the recovery/demo/chaos core (see Limitations #7 and `reports/prototype_quality_audit.md`). The recovery-focused suites pass 100/100 (1 skipped).
+**Expected Results** (verified 2026-10-07): 484 passed, 1 skipped, 0 failed (~6 min). The full suite is green, including the recovery policy, safety gate, chaos, and reconstruction suites.
 
 #### Key Test Categories
 - **State Machine**: `tests/test_state_machine.py` - Legal transition validation
-- **Recovery Policy**: `tests/test_recovery_policy.py` - Decision logic table
+- **Recovery Policy**: `tests/test_recovery_policy_v2.py` - Decision logic table
 - **Event Reconstruction**: `tests/test_reconstruction.py` - Root cause identification
+- **Innovation Demo**: `tests/test_innovation_demo.py` - End-to-end ML → policy → safety gate → idempotent recovery walkthrough
 - **Risk Assessment**: `tests/test_anomaly_rules.py`, `tests/test_risk_engine.py`
 - **Autonomous Recovery**: `tests/test_recovery_executor.py`, `tests/test_recovery_safety.py`
 - **Security**: `tests/test_customer_ownership.py`, `tests/test_rate_limiting.py`, `tests/test_audit.py`
@@ -655,10 +665,10 @@ npm test
 npm run test:watch
 
 # Type checking
-npm run type-check
+npm run typecheck
 ```
 
-**Expected Results**: 99/99 tests passing (as of latest commit)
+**Expected Results** (verified 2026-10-07): 121/123 tests passing, typecheck clean. The 2 remaining failures are pre-existing stale assertions in `src/__tests__/transactions.test.tsx` (they expect the old "Transaction ID" column label and "Find a transaction" heading); they do not affect the recovery/safety flows (see Limitations #7).
 
 ### End-to-End Testing
 
@@ -728,9 +738,9 @@ Scenarios tested:
 ### Verification Checklist
 
 - [ ] Backend health endpoint returns `{"status":"healthy"}`
-- [ ] Backend suite: 463 passed, 1 skipped (15 known date-anchored fixture failures — Limitations #7)
-- [ ] All 99 frontend tests pass
-- [ ] TypeScript compilation succeeds (`tsc --noEmit`)
+- [ ] Backend suite: 484 passed, 1 skipped, 0 failed
+- [ ] Frontend tests: 121/123 pass (2 known stale-assertion failures — Limitations #7)
+- [ ] TypeScript compilation succeeds (`npm run typecheck`)
 - [ ] Stage 10 E2E: 18/18 checks pass
 - [ ] Demo scenarios S1-S6 all prepare successfully
 - [ ] Customer can file report → support case auto-created
@@ -754,20 +764,17 @@ If you need to retrain models (e.g., with different synthetic data parameters):
 python scripts/generate_dataset.py
 # Output: data/transactions.csv (25k rows by default)
 
-# 2. Train all models
+# 2. Train all models (evaluation metrics and charts are produced as part of training)
 python -m ml.train
 # Outputs:
 # - models/failure_classifier.joblib
-# - models/recovery_risk_model.joblib
-# - models/anomaly_classifier.joblib
-# - models/preprocessor.joblib
-# - reports/*.png (evaluation charts)
+# - models/recovery_classifier.joblib
+# - models/risk_regressor.joblib
+# - models/preprocessors.joblib
+# - reports/metrics.json
+# - reports/confusion_matrix_*.png, reports/feature_importance_*.png
 
-# 3. Evaluate models
-python -m ml.evaluate
-# Outputs: reports/evaluation_report.md
-
-# 4. Restart backend to load new models
+# 3. Restart backend to load new models
 ```
 
 ### CORS Configuration
@@ -824,12 +831,12 @@ curl -X POST http://localhost:8000/api/v1/policy-simulator/run \
   -H "X-API-Key: dev-admin-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "corpus": "demo",
-    "policies": ["autonomous-v1", "manual-only-baseline", "autonomous-v2-experimental"]
+    "policies": ["autonomous-v1", "manual-only-baseline", "autonomous-v2-experimental"],
+    "source": {"demo": true}
   }'
 
 # Via script (generates report files)
-python -m scripts.stage11_experiment --corpus demo --policies all
+python -m scripts.stage11_experiment
 ```
 
 ### Event Bus Configuration
@@ -950,8 +957,9 @@ APRS/
    - These reset on server restart
 
 7. **Known Remaining Test Failures**
-   - 15 of 479 backend tests fail, all outside the verified recovery core: `test_event_conflicts` (10), `test_payment_events` (3), `test_event_bus` (1) pin their own fixture timestamps to 2026-10-02, which the ingestion clock-skew guard rejects on the current clock; `test_reconstruction` (1) is the long-documented pre-existing failure
-   - The verified recovery/demo/chaos core is fully green: recovery-focused suites 100 passed / 1 skipped, Stage 10 E2E 18/18, chaos 9/9 runnable scenarios (see `reports/prototype_quality_audit.md`)
+   - Backend: fully green as of 2026-10-07 — 484 passed, 1 skipped, 0 failed (the 15 date-anchored fixture failures and the long-documented reconstruction failure documented in earlier revisions have been resolved)
+   - Frontend: 2 of 123 tests fail — stale assertions in `src/__tests__/transactions.test.tsx` that expect the old "Transaction ID" column label and "Find a transaction" heading
+   - Recovery/demo/chaos verification: Stage 10 E2E 18/18, demo scenarios S1–S6 6/6, chaos scenarios all pass (see `reports/prototype_quality_audit.md`)
 
 ### ✅ What This System DOES Provide
 
