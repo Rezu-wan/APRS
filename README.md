@@ -119,7 +119,7 @@ On the same 1,142-case dataset, the current decision engine produced:
 
 - [Business Impact Report](reports/business_impact/business_impact_report.md)
 - [Live Decision Audit](reports/business_impact/live_decisions_v1.csv)
-- [Stage 11 Evaluation](reports/stage11/)
+- [Stage 11 Evaluation](reports/stage11/readme.md)
 
 
 
