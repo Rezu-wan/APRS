@@ -65,7 +65,7 @@ CATEGORICAL_FEATURES_BASE = ["network_quality"]
 
 # Outcome columns — legitimate features ONLY for tasks whose target is not
 # derived from them (Tasks 2 and 3; NOT Task 1).
-CATEGORICAL_FEATURES_OUTCOME = ["current_state", "failure_reason"]
+CATEGORICAL_FEATURES_OUTCOME = ["status", "failure_reason"]
 
 FEATURES_TASK1 = NUMERIC_FEATURES + CATEGORICAL_FEATURES_BASE
 FEATURES_TASK2 = NUMERIC_FEATURES + CATEGORICAL_FEATURES_BASE + CATEGORICAL_FEATURES_OUTCOME
@@ -101,16 +101,8 @@ def make_outcome_target(df: pd.DataFrame) -> pd.Series:
     differs from a hard failure (compensate / notify).
     """
     outcome = df["failure_reason"].astype("object").copy()
-
-# The main APRS dataset uses current_state to distinguish
-# SUCCESS and STALLED from hard failure reasons.
-    outcome[df["current_state"] == SUCCESS_LABEL] = SUCCESS_LABEL
-    outcome[df["current_state"] == STALLED_LABEL] = STALLED_LABEL
-
-# Any remaining missing failure reason is treated as STALLED.
-    outcome[
-    outcome.isna() | (outcome.astype(str) == "nan")
-] = STALLED_LABEL
+    outcome[df["status"] == SUCCESS_LABEL] = SUCCESS_LABEL
+    outcome[outcome.isna() | (outcome.astype(str) == "nan")] = STALLED_LABEL
     return pd.Categorical(outcome, categories=OUTCOME_CLASSES)
 
 

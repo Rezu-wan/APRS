@@ -66,12 +66,22 @@ RECOVERY_LABELS = [0, 1]  # 0 = FALSE (manual review), 1 = TRUE (auto-release)
 
 
 def split_data(
-    df: pd.DataFrame, y: pd.Series | np.ndarray, mode: str
+    df: pd.DataFrame, y: pd.Series | np.ndarray, mode: str, stratify: bool = True
 ) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray, np.ndarray]:
     y = np.asarray(y)
+
     if mode == "stratified":
+        idx = np.arange(len(df))
+
+        # Classification targets can be stratified.
+        # Continuous regression targets such as risk_score cannot.
+        stratify_y = y if stratify else None
+
         idx_tr, idx_te = train_test_split(
-            np.arange(len(df)), test_size=TEST_SIZE, random_state=RANDOM_STATE, stratify=y
+            idx,
+            test_size=TEST_SIZE,
+            random_state=RANDOM_STATE,
+            stratify=stratify_y,
         )
     elif mode == "chronological":
         order = df["timestamp"].sort_values().index.to_numpy()
@@ -101,7 +111,12 @@ def train_task(
     results: dict = {"target": TASK_META[task]["target"], "features": list(X.columns)}
 
     for mode in split_modes:
-        X_tr, X_te, y_tr, y_te = split_data(df, y, mode)
+        X_tr, X_te, y_tr, y_te = split_data(
+    df,
+    y,
+    mode,
+    stratify=(task != "risk"),
+)
         pipe = build_pipeline(task)
 
         fit_kwargs: dict = {}
