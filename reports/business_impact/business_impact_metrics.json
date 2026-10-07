@@ -1,0 +1,266 @@
+{
+  "report": "business_impact_evaluation",
+  "generated_at_utc": "2026-10-07T04:11:11Z",
+  "git_commit": "426a0e8e991ffc146b0f5ff03fb4b58347fa702a",
+  "method": "three evidence tiers, no invented numbers: recorded full-dataset outcomes + a registered-policy baseline counterfactual; a live re-simulation of the same cohort by the current engine via the existing policy-simulator API; and the existing reproducible Stage 11 sandbox benchmark",
+  "cohort_fingerprint_sha256": "12de22883883ca464f280655cd57cef2c1172961c9b7be98eb03e4686a443df3",
+  "evidence": {
+    "A_full_dataset_recorded": {
+      "evidence_type": "full_dataset_recorded",
+      "cohort": {
+        "definition": "all recovery_cases.csv rows = the recovery-eligible cohort of the 10,506-transaction seed-42 synthetic year (recovery records exist only for transactions with a non-NONE anomaly and a non-STALLED final state)",
+        "size": 1142,
+        "recoverable_size": 845,
+        "recoverable_definition": "recovery_candidate=true AND anomaly_type=GENUINE_FAILURE in the recorded risk_assessments — exactly the registered manual-only-baseline policy's manual-review queue",
+        "unsafe_size": 149,
+        "customers_cohort": 455
+      },
+      "ground_truth_source": "recovery_cases.recovery_required + risk_assessments.anomaly_type / recovery_candidate, written by generate_full_dataset.py from the simulated TRUE outcome, independent of any policy decision",
+      "v1": {
+        "releases": 38,
+        "value_released_bdt": 29656.01,
+        "manual_review": 296,
+        "manual_pending": 176,
+        "manual_resolved": 120,
+        "no_action_blocked": 808,
+        "false_recoveries": 0,
+        "unsafe_releases": 0,
+        "manual_review_value_bdt": 613390.64
+      },
+      "baseline_counterfactual": {
+        "definition": "registered manual-only-baseline semantics (api/services/policy_simulator.py) applied to the recorded assessments: never releases; every recoverable case -> MANUAL_REVIEW; everything else NO_ACTION",
+        "releases": 0,
+        "value_released_bdt": 0.0,
+        "manual_review": 845,
+        "false_recoveries": 0
+      },
+      "metrics": {
+        "recovery_rate_v1_pct": 4.5,
+        "recovery_rate_baseline_pct": 0.0,
+        "recovery_rate_improvement_pp": 4.5,
+        "value_recovered_v1_bdt": 29656.01,
+        "value_recovered_baseline_bdt": 0.0,
+        "manual_review_v1": 296,
+        "manual_review_baseline": 845,
+        "manual_review_reduction_pct": 64.97,
+        "manual_review_cases_avoided": 549,
+        "automated_recovery_count": 38,
+        "unsafe_prevented_count": 149,
+        "false_recovery_count": 0,
+        "false_recovery_rate_pct": 0.0,
+        "recoverable_left_unrecovered_v1": 807
+      },
+      "customer_proxy": {
+        "label": "PROXY — customer impact measured as queue/waiting burden, not a surveyed customer outcome",
+        "customers_with_auto_recovery": 36,
+        "customers_with_manual_review": 189,
+        "cases_waiting_for_human_v1": 176,
+        "cases_waiting_for_human_baseline": 845
+      },
+      "false_recovery_detail": [],
+      "unsafe_release_detail": []
+    },
+    "B_full_dataset_live_simulation": {
+      "evidence_type": "full_dataset_live_simulation",
+      "note": "the CURRENT engine's DECISION layer re-decided every recorded case on the same evidence via the existing policy-simulator API (read-only simulation); ground truth for false/missed comes from the recorded dataset labels, never from the engine under test; value metrics are reported both at the decision layer and execution-consistent (amounts above the configured auto-release cap of 1500 BDT are rejected by recovery_policy.evaluate_policy at execution and are excluded from the execution-consistent figure)",
+      "auto_release_cap_bdt": 1500.0,
+      "cohort_size_evaluated": 1142,
+      "genuine_denominator": 856,
+      "genuine_denominator_definition": "recorded risk_assessments anomaly_type == GENUINE_FAILURE (independent ground truth)",
+      "policies": {
+        "autonomous-v1": {
+          "release": 740,
+          "manual_review": 0,
+          "block": 0,
+          "gate_vetoes": 38,
+          "decision_latency_ms_avg": 0.0087
+        },
+        "manual-only-baseline": {
+          "release": 0,
+          "manual_review": 740,
+          "block": 0,
+          "gate_vetoes": 0,
+          "decision_latency_ms_avg": 0.002
+        },
+        "autonomous-v2-experimental": {
+          "release": 384,
+          "manual_review": 356,
+          "block": 0,
+          "gate_vetoes": 22,
+          "decision_latency_ms_avg": 0.0055
+        }
+      },
+      "metrics": {
+        "releases_raw_decision_layer": 740,
+        "gate_vetoes_v1": 38,
+        "post_gate_releases": 702,
+        "execution_consistent_releases": 363,
+        "recovery_rate_v1_execution_consistent_pct": 40.77,
+        "recovery_rate_baseline_pct": 0.0,
+        "value_execution_consistent_bdt": 198586.6,
+        "value_decision_layer_post_gate_bdt": 6880443.08,
+        "value_recovered_baseline_bdt": 0.0,
+        "manual_review_v1": 0,
+        "manual_review_baseline": 740,
+        "manual_review_reduction_pct": 100.0,
+        "automated_recovery_count_execution_consistent": 349,
+        "false_recovery_count": 24,
+        "false_recovery_duplicates": 24,
+        "false_recovery_rate_pct": 3.42,
+        "genuine_left_unrecovered_v1": 178
+      },
+      "false_recovery_detail": [
+        {
+          "transaction_id": "TXN-0000134",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0000551",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0000622",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0001387",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0001636",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0001646",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0001981",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0002651",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0003214",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0003420",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0003421",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0003547",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0003964",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0004153",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0004279",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0004312",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0006306",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0006410",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0006477",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0007381",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0008414",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0008917",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0009594",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        },
+        {
+          "transaction_id": "TXN-0009794",
+          "recorded_anomaly": "DUPLICATE_TRANSACTION",
+          "note": "cross-transaction duplicate evidence is not visible to per-transaction simulation; recorded chain handled it safely (blocked)"
+        }
+      ],
+      "raw_decisions_csv": "reports/business_impact/live_decisions_v1.csv"
+    },
+    "C_sandbox_benchmark": {
+      "evidence_type": "sandbox_benchmark",
+      "source_run": "experiment-7c9f078b98b74608acc81cad4900371c.json",
+      "source_run_timestamp_utc": "2026-10-07T03:47:48Z",
+      "dataset_fingerprint": "906ecedccb90ae53efce53aacf9b8369d8ba87522f4abe844c88eddef8443821",
+      "cohort": {
+        "definition": "deterministic demo corpus DEMO-S1..S6 (Stage 11 Phase 11H, ground truth available)",
+        "size": 6,
+        "recoverable_size": 3
+      },
+      "metrics": {
+        "recovery_rate_v1_pct": 100.0,
+        "recovery_rate_baseline_pct": 0.0,
+        "v1_false_recovery": 0,
+        "v1_missed_recovery": 0,
+        "baseline_missed_recovery": 3,
+        "manual_review_v1": 0,
+        "manual_review_baseline": 3,
+        "gate_vetoes_v1": 0
+      }
+    }
+  },
+  "limitations": [
+    "100% synthetic data (manifest: synthetic=true, seed 42); no real payments, persons, or amounts.",
+    "Evidence A records the v1 system's outcomes as generated on 2026-10-03; the baseline arm is a counterfactual derived from the REGISTERED baseline policy semantics, not a separately executed run.",
+    "Evidence B re-decides recorded cases with today's engine at evaluation time; fresh-evidence gates see evaluation-time clocks.",
+    "Evidence C is a 6-transaction deterministic benchmark — it is NOT the full dataset and must never be presented as such.",
+    "No extrapolation, annualization, or per-year projection is made anywhere in this evaluation.",
+    "Customer impact is a PROXY (queue/waiting burden), not a surveyed customer outcome."
+  ]
+}

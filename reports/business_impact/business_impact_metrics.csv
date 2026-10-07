@@ -1,0 +1,14 @@
+evidence_tier,metric,value,numerator,denominator,cohort
+A_recorded,recovery_rate_v1_pct,4.5,38 releases,845 recoverable cases,full dataset n=1142
+A_recorded,value_recovered_v1_bdt,29656.01,sum(released_amount) of releases,-,full dataset n=1142
+A_recorded,manual_review_reduction_pct,64.97,549 avoided,845 baseline manual reviews,full dataset n=1142
+A_recorded,automated_recovery_count,38,RELEASE_LIMIT cases,-,full dataset n=1142
+A_recorded,unsafe_prevented_count,149,unsafe-anomaly cases NOT released,149 unsafe-anomaly cases,full dataset n=1142
+A_recorded,false_recovery_count,0,releases with ground truth NOT genuine,38 releases,full dataset n=1142
+B_live_simulation,recovery_rate_v1_execution_consistent_pct,40.77,"363 post-gate, cap-consistent releases",856 recorded-genuine cases,full dataset n=1142
+B_live_simulation,value_execution_consistent_bdt,198586.6,-,-,full dataset n=1142
+B_live_simulation,manual_review_reduction_pct,100.0,-,-,full dataset n=1142
+B_live_simulation,false_recovery_count,24,-,-,full dataset n=1142
+B_live_simulation,gate_vetoes_v1,38,-,-,full dataset n=1142
+C_sandbox,recovery_rate_v1_pct,100.0,3 releases,6 demo transactions,sandbox n=6 (NOT full dataset)
+C_sandbox,false_recovery_count,0,-,-,sandbox n=6 (NOT full dataset)
