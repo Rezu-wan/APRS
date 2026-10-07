@@ -1,0 +1,34 @@
+Real-dataset ground-truth replay (post-fix, 2026-09-22)
+Dataset: data/dataset (READ-ONLY); replay DB: fresh data/dataset_e2e.db
+
+TXN-0000020: decision=RECOVERY_BLOCKED action=NO_ACTION status=BLOCKED provider_ref=None
+   reason: amount 9831.98 exceeds the auto-release cap 1500.0: manual handling required
+   assessment: anomaly=GENUINE_FAILURE risk=MEDIUM
+   ground truth: recorded: BLOCKED 'amount above auto-release cap' (9,831.98 > 1,500)
+
+TXN-0000201: decision=RECOVERY_BLOCKED action=NO_ACTION status=BLOCKED provider_ref=None
+   reason: multiple customer debit confirmations — possible double deduction requires manual financial review
+   assessment: anomaly=DOUBLE_DEDUCTION risk=CRITICAL
+   ground truth: recorded: BLOCKED DOUBLE_DEDUCTION
+
+TXN-0003500: decision=RECOVERY_BLOCKED action=NO_ACTION status=BLOCKED provider_ref=None
+   reason: missing evidence produces uncertainty — uncertainty never recovers funds autonomously
+   assessment: anomaly=UNKNOWN risk=UNKNOWN
+   ground truth: recorded: BLOCKED NEW_SUCCESSFUL_SETTLEMENT
+
+TXN-0000094: decision=RECOVERY_BLOCKED action=NO_ACTION status=BLOCKED provider_ref=None
+   reason: missing evidence produces uncertainty — uncertainty never recovers funds autonomously
+   assessment: anomaly=INCOMPLETE risk=UNKNOWN
+   ground truth: recorded: BLOCKED INSUFFICIENT_EVIDENCE
+
+TXN-0000001: decision=RECOVERY_BLOCKED action=NO_ACTION status=BLOCKED provider_ref=None
+   reason: missing evidence produces uncertainty — uncertainty never recovers funds autonomously
+   assessment: anomaly=INCOMPLETE risk=UNKNOWN
+   ground truth: recorded: MANUAL_REVIEW (resolved manually)
+
+TXN-0000537: decision=RECOVERY_BLOCKED action=RELEASE_LIMIT status=BLOCKED provider_ref=None
+   reason: customer debit confirmed, settlement not observed with genuine failure (GATEWAY_TIMEOUT) at MEDIUM risk — release limit autonomously
+   assessment: anomaly=GENUINE_FAILURE risk=MEDIUM
+   ground truth: recorded: RELEASED historically (must not release again)
+
+sandbox ledger entries after full replay: 0 (expected 0)

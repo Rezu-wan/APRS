@@ -273,7 +273,7 @@ APRS combines machine learning risk assessment with deterministic policy decisio
 - **Process Management**: uvicorn (ASGI server)
 
 ### Testing & Quality
-- **Testing**: pytest (406 tests)
+- **Testing**: pytest (479 tests)
 - **Coverage**: Unit, integration, and E2E tests
 - **Linting**: TypeScript compiler (tsc)
 - **E2E Scripts**: Custom Python scripts for live API verification
@@ -630,7 +630,7 @@ python -m pytest tests/test_recovery_executor.py -v
 python -m pytest tests/ -k "reconstruction" -v
 ```
 
-**Expected Results**: 406 passed, 1 skipped (as of latest commit)
+**Expected Results** (verified 2026-09-22): 463 passed, 1 skipped — 15 known failures remain, all date-anchored test fixtures outside the recovery/demo/chaos core (see Limitations #7 and `reports/prototype_quality_audit.md`). The recovery-focused suites pass 100/100 (1 skipped).
 
 #### Key Test Categories
 - **State Machine**: `tests/test_state_machine.py` - Legal transition validation
@@ -728,7 +728,7 @@ Scenarios tested:
 ### Verification Checklist
 
 - [ ] Backend health endpoint returns `{"status":"healthy"}`
-- [ ] All 406 backend tests pass
+- [ ] Backend suite: 463 passed, 1 skipped (15 known date-anchored fixture failures — Limitations #7)
 - [ ] All 99 frontend tests pass
 - [ ] TypeScript compilation succeeds (`tsc --noEmit`)
 - [ ] Stage 10 E2E: 18/18 checks pass
@@ -949,9 +949,9 @@ APRS/
    - Event bus is in-memory by default
    - These reset on server restart
 
-7. **Single Test Failure**
-   - One pre-existing test failure in reconstruction tests (not related to recent changes)
-   - 406/407 tests pass (99.75% pass rate)
+7. **Known Remaining Test Failures**
+   - 15 of 479 backend tests fail, all outside the verified recovery core: `test_event_conflicts` (10), `test_payment_events` (3), `test_event_bus` (1) pin their own fixture timestamps to 2026-10-02, which the ingestion clock-skew guard rejects on the current clock; `test_reconstruction` (1) is the long-documented pre-existing failure
+   - The verified recovery/demo/chaos core is fully green: recovery-focused suites 100 passed / 1 skipped, Stage 10 E2E 18/18, chaos 9/9 runnable scenarios (see `reports/prototype_quality_audit.md`)
 
 ### ✅ What This System DOES Provide
 

@@ -612,17 +612,25 @@ def run_security(runner: Runner, base: str, args) -> None:
             runner.keep(f"sec-support-{label.replace(' ', '-')}", body)
             if status != 403:
                 raise ApiError(f"SUPPORT {label}: expected 403, got HTTP {status}")
-        # SUPPORT may still READ demo state
-        for label, url in (
-                ("scenarios", f"{base}/api/v1/demo/scenarios"),
-                ("status", f"{base}/api/v1/demo/status"),
-                ("ledger", f"{base}/api/v1/sandbox/ledger")):
-            body = _call("GET", url, SUPPORT_KEY, None, args.verbose)
+        # Demo is ADMIN-only by contract (routes/demo.py require_roles +
+        # tests/test_demo_router.py: "Demo mode is admin-only"): SUPPORT
+        # demo reads must be 403 too; only the sandbox ledger is readable.
+        for label, url, expected in (
+                ("scenarios", f"{base}/api/v1/demo/scenarios", 403),
+                ("status", f"{base}/api/v1/demo/status", 403),
+                ("ledger", f"{base}/api/v1/sandbox/ledger", 200)):
+            status, body = _probe("GET", url, SUPPORT_KEY, None, args.verbose)
             runner.keep(f"sec-support-read-{label}", body)
-        return "mutate -> 403 x2; read scenarios/status/ledger -> 200"
+            if status != expected:
+                raise ApiError(
+                    f"SUPPORT read {label}: expected HTTP {expected}, "
+                    f"got HTTP {status}"
+                )
+        return "mutate -> 403 x2; demo reads -> 403 x2; ledger read -> 200"
 
     runner.timed("SEC support", lambda: runner.check(
-        "SEC2", "SUPPORT may read, never mutate demo state", _support))
+        "SEC2", "SUPPORT never mutates or reads demo state (ledger readable)",
+        _support))
 
     def _secrets():
         # 'sk-' is checked as a QUOTED-TOKEN PREFIX (a real provider key

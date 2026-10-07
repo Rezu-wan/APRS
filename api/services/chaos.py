@@ -25,8 +25,9 @@ and the in-memory provider entry (MockPaymentProvider.purge_transactions,
 which also restores the held amount to the simulated limit and drops the
 provider-level idempotency replays so a rerun executes fresh).
 
-Determinism: fixed timestamps derived from CHAOS_BASE (no RNG, no wall
-clock in the event chains); ids are pinned as CHAOS-<scenario>-1.
+Determinism: fixed timestamps derived from CHAOS_BASE (no RNG; the base
+is pinned once at import, so no wall clock in the event chains); ids are
+pinned as CHAOS-<scenario>-1.
 
 Honesty contract: invariants NEVER raise — a violated invariant records
 held=False and flips the verdict to FAIL; the endpoint still returns 200
@@ -64,9 +65,15 @@ logger = logging.getLogger("payment_recovery.chaos")
 
 CHAOS_TRANSACTION_PREFIX = "CHAOS-"
 
-# Deterministic domain-time base for all chaos event chains (fixed, UTC —
-# never datetime.now: reruns must produce identical evidence).
-CHAOS_BASE = datetime(2026, 10, 3, 13, 0, 0, tzinfo=timezone.utc)
+# Deterministic domain-time base for all chaos event chains (UTC). The
+# anchor is read from the wall clock ONCE at import (yesterday, same
+# time-of-day) so every chain stays in the past and passes ingestion's
+# >24h future-skew guard; within a process the base is constant, so reruns
+# in the same server produce identical evidence and all relative offsets
+# are unchanged.
+CHAOS_BASE = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+    hour=13, minute=0, second=0, microsecond=0
+)
 
 # Scenario catalog order also fixes each scenario's deterministic start
 # offset (one minute apart, so chains can never collide on timestamps).

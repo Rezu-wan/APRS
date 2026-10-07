@@ -15,6 +15,10 @@ Decision table — FIRST MATCH WINS (rule ids R-A..R-F, then DEFAULT):
          -> ELIGIBLE, action RELEASE_LIMIT.
          Money provably left the customer, the failure is genuine, risk is
          bounded, and settlement was never confirmed — safe to release.
+         The hard autonomy caps (RECOVERY_MAX_AMOUNT,
+         RECOVERY_MAX_PREVIOUS_FAILURES — same rules as the Stage-3
+         recovery_policy.evaluate_policy) veto R-A: above-cap evidence is
+         manual work, never an autonomous release.
 
   R-B  recovery_candidate AND anomaly GENUINE_FAILURE AND risk in
        (HIGH, CRITICAL)
@@ -53,8 +57,10 @@ facts.
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
+from api.core.config import get_settings
 from api.schemas.reconstruction import (
     ReconstructionResult,
     ROOT_CAUSE_NONE,
@@ -93,6 +99,28 @@ _AUTONOMOUS_RISK_LEVELS = (RISK_LOW, RISK_MEDIUM)
 
 # Settlement statuses compatible with a recovery attempt.
 _RECOVERABLE_SETTLEMENT = ("NOT_OBSERVED", "NOT_CONFIRMED", "FAILED")
+
+
+def _cap_violation(tx: Any) -> str | None:
+    """Return a human reason when ``tx`` violates a hard autonomy cap
+    (amount / previous-failures, mirroring recovery_policy.evaluate_policy),
+    or None when no cap applies."""
+    settings = get_settings()
+    amount = getattr(tx, "amount", None)
+    if amount is not None and Decimal(str(amount)) > Decimal(
+        str(settings.recovery_max_amount)
+    ):
+        return (
+            f"amount {amount} exceeds the auto-release cap "
+            f"{settings.recovery_max_amount}: manual handling required"
+        )
+    previous = getattr(tx, "previous_failures", None)
+    if previous is not None and previous > settings.recovery_max_previous_failures:
+        return (
+            f"previous_failures {previous} exceeds the policy limit "
+            f"{settings.recovery_max_previous_failures}"
+        )
+    return None
 
 
 def decide(
@@ -142,6 +170,16 @@ def decide(
         and reconstruction.customer_debit_status == "CONFIRMED"
         and reconstruction.settlement_status in _RECOVERABLE_SETTLEMENT
     ):
+        # hard autonomy caps first: above-cap evidence is manual work,
+        # never an autonomous release
+        cap_reason = _cap_violation(tx)
+        if cap_reason is not None:
+            return _build(
+                eligible=False,
+                action=ACTION_NO_ACTION,
+                reason=cap_reason,
+                blocked_reason=BLOCK_NOT_ELIGIBLE,
+            )
         return _build(
             eligible=True,
             action=ACTION_RELEASE_LIMIT,

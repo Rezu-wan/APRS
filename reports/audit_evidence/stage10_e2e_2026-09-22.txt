@@ -1,0 +1,88 @@
+Stage 10 E2E — final demo run — API: http://127.0.0.1:8010
+SANDBOX ONLY — no real money moves. Every recovery is simulated.
+(rate limiting is ENABLED on the live dev server: pausing 1.2s between calls; HTTP 429 is a FAIL)
+
+[verbose] POST http://127.0.0.1:8010/api/v1/demo/reset headers={'Content-type': 'application/json'}
+[verbose] -> 500: {"error": {"code": "INTERNAL_ERROR", "message": "unexpected server error", "request_id": "62b85dad8fb141e8"}}
+  FAIL [R1] demo reset is deterministic: POST http://127.0.0.1:8010/api/v1/demo/reset -> HTTP 500: {"error": {"code": "INTERNAL_ERROR", "message": "unexpected server error", "request_id": "62b85dad8fb141e8"}}
+[verbose] GET http://127.0.0.1:8010/api/v1/demo/scenarios headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"simulated": true, "note": "simulated sandbox \u2014 no real financial transaction", "scenarios": [{"key": "S1", "transaction_id": "DEMO-S1", "title": "Genuine failure, auto-recovered", "subtitle": "merchant timeout on a real failure", "story": "A real failure times out at the merchant and the engine safely auto-recovers the held amount in the sandbox.", "steps_key": "merchant_timeout", "expected
+  FAIL [S1a] S1 prepared, no recovery row yet: S1 not prepared after reset: exists=True, prepared=False
+[verbose] GET http://127.0.0.1:8010/api/v1/transactions/DEMO-S1 headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"transaction_id": "DEMO-S1", "user_id": "USER-DEMO", "merchant_id": "MERCHANT-DEMO", "amount": "1200.00", "currency": "BDT", "timestamp": "2026-09-22T14:23:16.327622Z", "gateway_latency_ms": 2800, "retry_count": 2, "network_quality": "Good", "previous_failures": 1, "account_age_days": 450, "failure_reason": "Timeout", "current_state": "RECOVERY_PENDING", "transaction_type": null, "channel": null,
+  PASS [S1b] transaction read-back — current_state=RECOVERY_PENDING
+[verbose] GET http://127.0.0.1:8010/api/v1/transactions/DEMO-S1/reconstruction headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"transaction_id": "DEMO-S1", "ordered_events": [], "current_stage": "UNAVAILABLE", "last_successful_stage": null, "failure_stage": null, "root_cause": "INCOMPLETE", "customer_debit_status": "NOT_OBSERVED", "gateway_status": "NOT_OBSERVED", "merchant_confirmation_status": "NOT_OBSERVED", "settlement_status": "NOT_OBSERVED", "reconstruction_confidence": 0.0, "missing_events": ["CUSTOMER_DEBIT_CONFI
+  PASS [S1c] reconstruction derives a root cause — root_cause=INCOMPLETE
+[verbose] POST http://127.0.0.1:8010/api/v1/transactions/DEMO-S1/risk-assessment headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"assessment": {"transaction_id": "DEMO-S1", "assessment_id": "d57843a5-06fb-4106-9b09-801e2c310e22", "anomaly_type": "INCOMPLETE", "risk_level": "UNKNOWN", "risk_score": 0.75, "ml_anomaly_score": 1.0, "deterministic_risk_score": 0.5, "recovery_candidate": false, "recovery_block_reason": "insufficient payment evidence", "evidence": [{"code": "INCOMPLETE_EVENT_CHAIN", "description": "Only 0 of 4 pa
+    WARN [S1d] honest ML/rules blend produced anomaly_type='INCOMPLETE' (expected GENUINE_FAILURE) — assessment existence is asserted, not the exact label
+  PASS [S1d] risk assessment exists (expect GENUINE_FAILURE) — assessment exists, anomaly_type='INCOMPLETE'
+[verbose] POST http://127.0.0.1:8010/api/v1/transactions/DEMO-S1/recovery/process headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"transaction_id": "DEMO-S1", "decision": "RECOVERY_BLOCKED", "action": "NO_ACTION", "status": "BLOCKED", "recovery_id": "575ab1ff-080b-4314-a228-c65013573b84", "provider_reference": null, "reason": "missing evidence produces uncertainty \u2014 uncertainty never recovers funds autonomously", "simulated": true, "assessment": {"anomaly_type": "INCOMPLETE", "risk_level": "UNKNOWN", "recovery_candidat
+  FAIL [S1e] recovery process AUTO_RECOVERED/VERIFIED: expected decision AUTO_RECOVERED, got 'RECOVERY_BLOCKED'
+[verbose] GET http://127.0.0.1:8010/api/v1/transactions/DEMO-S1/recovery headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"transaction_id": "DEMO-S1", "action": "NO_ACTION", "status": "BLOCKED", "recovery_id": "575ab1ff-080b-4314-a228-c65013573b84", "decision_reason": "missing evidence produces uncertainty \u2014 uncertainty never recovers funds autonomously", "blocked_reason": "INSUFFICIENT_EVIDENCE", "failure_reason": null, "requested_amount": 1200.0, "released_amount": null, "currency": "BDT", "provider": null, "
+  FAIL [S1f] recovery read-back agrees: recovery row status 'BLOCKED', expected VERIFIED
+[verbose] GET http://127.0.0.1:8010/api/v1/sandbox/ledger headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"simulated": true, "initial_limit": 10000.0, "available_limit": 10000.0, "currency": "BDT", "entries": []}
+  FAIL [S1g] sandbox ledger reconciles: no sandbox ledger entry for DEMO-S1
+[verbose] POST http://127.0.0.1:8010/api/v1/explanations/transaction headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"transaction_id": "DEMO-S1", "language": "bn", "audience": "customer", "explanation": "\u0986\u09aa\u09a8\u09be\u09b0 \u09b2\u09c7\u09a8\u09a6\u09c7\u09a8\u099f\u09bf \u09a8\u09bf\u09b0\u09cd\u09a7\u09be\u09b0\u09bf\u09a4 \u09b8\u09ae\u09af\u09bc\u09c7\u09b0 \u09ae\u09a7\u09cd\u09af\u09c7 \u0997\u09c7\u099f\u0993\u09af\u09bc\u09c7 \u09b8\u09be\u09a1\u09bc\u09be \u09a8\u09be \u09aa\u09be\u0993\u09
+  PASS [S1h] bn/customer explanation generated — bn explanation ok (provider generated)
+[verbose] GET http://127.0.0.1:8010/api/v1/audit?limit=100 headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"count": 12, "rows": [{"audit_id": "ca703e93-9b66-48bd-aca2-6368341d31c6", "created_at": "2026-09-22T14:23:22.394213Z", "actor_type": "ADMIN", "actor_id": "api_key_admin", "action": "RECOVERY_PROCESS", "resource_type": "transaction", "resource_id": "DEMO-S1", "request_id": "a59704ee29024496", "result": "ALLOWED", "reason": "human-triggered recovery: RECOVERY_BLOCKED"}, {"audit_id": "4b05972e-1f3e
+  FAIL [S1i] audit trail records demo actions: audit has no DEMO_RESET/DEMO_SEED rows (saw ['FORBIDDEN', 'RECOVERY_PROCESS'])
+[verbose] POST http://127.0.0.1:8010/api/v1/demo/scenarios/S2/prepare headers={'Content-type': 'application/json'}
+[verbose] -> 500: {"error": {"code": "INTERNAL_ERROR", "message": "unexpected server error", "request_id": "270a946869b14deb"}}
+  FAIL [S2] double deduction blocked (provider not called): POST http://127.0.0.1:8010/api/v1/demo/scenarios/S2/prepare -> HTTP 500: {"error": {"code": "INTERNAL_ERROR", "message": "unexpected server error", "request_id": "270a946869b14deb"}}
+[verbose] GET http://127.0.0.1:8010/api/v1/demo/scenarios headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"simulated": true, "note": "simulated sandbox \u2014 no real financial transaction", "scenarios": [{"key": "S1", "transaction_id": "DEMO-S1", "title": "Genuine failure, auto-recovered", "subtitle": "merchant timeout on a real failure", "story": "A real failure times out at the merchant and the engine safely auto-recovers the held amount in the sandbox.", "steps_key": "merchant_timeout", "expected
+  PASS [S2-state] DEMO-S2 never released (S2) — current_state=RECOVERY_PENDING
+[verbose] POST http://127.0.0.1:8010/api/v1/demo/scenarios/S5/prepare headers={'Content-type': 'application/json'}
+[verbose] -> 500: {"error": {"code": "INTERNAL_ERROR", "message": "unexpected server error", "request_id": "7095fa06638d40a0"}}
+  FAIL [S5] late settlement blocks recovery (layered): POST http://127.0.0.1:8010/api/v1/demo/scenarios/S5/prepare -> HTTP 500: {"error": {"code": "INTERNAL_ERROR", "message": "unexpected server error", "request_id": "7095fa06638d40a0"}}
+[verbose] GET http://127.0.0.1:8010/api/v1/demo/scenarios headers={'Content-type': 'application/json'}
+[verbose] -> 200: {"simulated": true, "note": "simulated sandbox \u2014 no real financial transaction", "scenarios": [{"key": "S1", "transaction_id": "DEMO-S1", "title": "Genuine failure, auto-recovered", "subtitle": "merchant timeout on a real failure", "story": "A real failure times out at the merchant and the engine safely auto-recovers the held amount in the sandbox.", "steps_key": "merchant_timeout", "expected
+  PASS [S5-state] DEMO-S5 never released (S5) — current_state=RECOVERY_PENDING
+[verbose] POST http://127.0.0.1:8010/api/v1/demo/scenarios/S6/prepare headers={'Content-type': 'application/json'}
+[verbose] -> 500: {"error": {"code": "INTERNAL_ERROR", "message": "unexpected server error", "request_id": "e92dd8eed47b40b9"}}
+  FAIL [S6] duplicate process is idempotent (released once): POST http://127.0.0.1:8010/api/v1/demo/scenarios/S6/prepare -> HTTP 500: {"error": {"code": "INTERNAL_ERROR", "message": "unexpected server error", "request_id": "e92dd8eed47b40b9"}}
+[verbose] POST http://127.0.0.1:8010/api/v1/demo/reset headers={'Content-type': 'application/json'}
+[verbose] POST http://127.0.0.1:8010/api/v1/demo/scenarios/S1/prepare headers={'Content-type': 'application/json'}
+[verbose] GET http://127.0.0.1:8010/api/v1/demo/scenarios headers={'Content-type': 'application/json'}
+[verbose] GET http://127.0.0.1:8010/api/v1/sandbox/ledger headers={'Content-type': 'application/json'}
+[verbose] POST http://127.0.0.1:8010/api/v1/transactions/DEMO-S2/recovery/process headers={'Content-type': 'application/json'}
+[verbose] GET http://127.0.0.1:8010/api/v1/transactions/DEMO-S2/risk-assessment headers={'Content-type': 'application/json'}
+[verbose] GET http://127.0.0.1:8010/api/v1/audit headers={'Content-type': 'application/json'}
+  PASS [SEC1] CUSTOMER denied on all demo/recovery/audit routes — 7 CUSTOMER probes -> 403
+[verbose] POST http://127.0.0.1:8010/api/v1/demo/reset headers={'Content-type': 'application/json'}
+[verbose] POST http://127.0.0.1:8010/api/v1/demo/scenarios/S1/prepare headers={'Content-type': 'application/json'}
+[verbose] GET http://127.0.0.1:8010/api/v1/demo/scenarios headers={'Content-type': 'application/json'}
+[verbose] -> 403: {"error": {"code": "INSUFFICIENT_PERMISSIONS", "message": "role SUPPORT may not perform this action (allowed: SYSTEM, ADMIN)", "request_id": "52056d82f0e54b69"}}
+  FAIL [SEC2] SUPPORT may read, never mutate demo state: GET http://127.0.0.1:8010/api/v1/demo/scenarios -> HTTP 403: {"error": {"code": "INSUFFICIENT_PERMISSIONS", "message": "role SUPPORT may not perform this action (allowed: SYSTEM, ADMIN)", "request_id": "52056d82f0e54b69"}}
+  PASS [SEC3] secret-leakage sweep over all collected bodies — 20 response bodies swept, zero leaks
+
+PERFORMANCE (measured, live server)
+------------------------------------------------
+  S1a scenario+no-recovery       1204.8 ms
+  S1b transaction read           1203.5 ms
+  S1c reconstruction             1208.1 ms
+  S1d risk assessment            1214.7 ms
+  S1e recovery process           1217.9 ms
+  S1f recovery read-back         1203.1 ms
+  S1g ledger consistency         1201.9 ms
+  S1h explanation                1209.3 ms
+  S1i audit trail                1203.6 ms
+  S2 double deduction            1223.7 ms
+  S5 race                        1223.5 ms
+  S6 idempotency                 1223.5 ms
+  SEC customer                   8451.0 ms
+  SEC support                    3621.5 ms
+  SEC secrets                       0.3 ms
+------------------------------------------------
+  TOTAL                         30263.7 ms
+
+STAGE 10 E2E: 8/18 checks passed
+Autonomous recovery operates on a simulated sandbox provider. No real financial transaction is performed.
+No API key value is ever printed by this script.
