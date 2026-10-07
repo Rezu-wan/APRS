@@ -92,6 +92,35 @@ A leakage diagnostic was performed for the recovery-safety classifier.
 `safe_to_release` target was derived from risk_score during dataset
 generation. This prevents artificially inflated evaluation results.
 
+## Business Impact
+
+APRS was evaluated against a 1,142-case recorded recovery cohort.
+
+| Metric | Result |
+|---|---:|
+| Auto-recoveries | 38 |
+| Recorded recovery value | 29,656.01 BDT |
+| Manual reviews | 845 → 296 |
+| Manual-review reduction | 64.97% |
+| Unsafe cases prevented | 149 |
+| False recoveries | 0 |
+
+### Current Engine Re-simulation
+
+On the same 1,142-case dataset, the current decision engine produced:
+
+- **40.77% modeled recovery rate** (349/856 genuine failures)
+- **198,586.60 BDT execution-consistent modeled impact**
+- **38 unsafe would-be releases vetoed**
+
+> The 198,586.60 BDT figure is a simulation result, not realized real-world money.
+
+### Detailed Reports
+
+- [Business Impact Report](reports/business_impact/business_impact_report.md)
+- [Live Decision Audit](reports/business_impact/live_decisions_v1.csv)
+- [Stage 11 Evaluation](reports/stage11/)
+
 
 
 ---
