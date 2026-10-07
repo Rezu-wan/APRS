@@ -212,31 +212,43 @@ def _derive_root_cause(statuses: dict[str, str]) -> tuple[str, str | None]:
 
 
 def _compute_cache_key(transaction_id: str, events: Sequence[Any]) -> str:
-    """Compute cache key from transaction ID and sorted event IDs. Events with
-    no id attribute (test doubles) use their event_type + event_timestamp."""
-    key_parts = [transaction_id]
-    for event in events:
-        if hasattr(event, "id") and event.id is not None:
-            key_parts.append(str(event.id))
-        else:
-            # Test doubles: use event_type + timestamp as fingerprint
-            key_parts.append(
-                f"{_event_attr(event, 'event_type')}:{_event_attr(event, 'event_timestamp').isoformat()}"
+    """Compute the cache key from the transaction ID plus a CONTENT
+    fingerprint of every event.
+
+    Content, not just ids: the engine's contract is "pure function of the
+    input event list", so the same (transaction, event-id) tuple reappearing
+    with different content (test doubles across modules, or rowid reuse after
+    a purge) must never replay a reconstruction computed from other inputs.
+    Events with no id attribute (test doubles) still distinguish by
+    type/status/timestamp/provider reference.
+    """
+
+    def _fingerprint(event: Any) -> str:
+        return "|".join(
+            (
+                str(getattr(event, "id", None) or ""),
+                str(_event_attr(event, "event_type")),
+                str(_event_attr(event, "status")),
+                str(_event_attr(event, "event_timestamp")),
+                str(getattr(event, "provider_event_id", None) or ""),
             )
-    key_parts.sort()
-    return hashlib.sha256("|".join(key_parts).encode()).hexdigest()
+        )
+
+    event_parts = sorted(_fingerprint(event) for event in events)
+    payload = "|".join([transaction_id, *event_parts])
+    return f"{transaction_id}::{hashlib.sha256(payload.encode()).hexdigest()}"
 
 
 def clear_reconstruction_cache(transaction_id: str | None = None) -> None:
     """Clear reconstruction cache. If transaction_id given, only clears entries
-    for that transaction (prefix match). If None, clears entire cache."""
+    for that transaction (exact key-prefix match). If None, clears entire
+    cache."""
     if transaction_id is None:
         _reconstruction_cache.clear()
     else:
-        # Remove all keys that start with the transaction_id hash prefix
+        prefix = f"{transaction_id}::"
         keys_to_remove = [
-            key for key in _reconstruction_cache
-            if key.startswith(hashlib.sha256(transaction_id.encode()).hexdigest()[:16])
+            key for key in _reconstruction_cache if key.startswith(prefix)
         ]
         for key in keys_to_remove:
             _reconstruction_cache.pop(key, None)

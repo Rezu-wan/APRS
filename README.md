@@ -4,6 +4,30 @@ Autonomous Payment Recovery System — an intelligent, event-driven platform for
 
 ---
 
+## Innovation
+
+**Distinctive contribution:** APRS separates *prediction* from *execution*. ML risk assessment advises, a versioned deterministic policy (`autonomous-v1`) decides eligibility, and an independent, pure **fresh-evidence safety gate** stands between an eligible-looking decision and the money — re-deriving state from events at execution time (`api/services/recovery_executor.py:188`) — so no stale or invalid decision can move funds. An append-only **Digital Twin** makes every decision and every veto replayable.
+
+```
+ML Risk Assessment (advisory, never authorizes)
+  → Deterministic Policy (autonomous-v1, if-then, versioned)
+    → Digital Twin / State Reconstruction (append-only, state at any T)
+      → Fresh-Evidence Safety Gate (re-checks NEW events, independent veto)
+        → Execution (idempotent, verified, sandbox provider)
+```
+
+Key evidence (all sandbox/synthetic, seed 42 — see [Innovation Report](reports/innovation/innovation_report.md) and [Business Impact Report](reports/business_impact/business_impact_report.md)):
+
+| Evidence | Result |
+|---|---|
+| Unsafe cases prevented (recorded cohort, n=1,142) | **149 / 149 blocked, 0 released** |
+| False recoveries (recorded auto-releases) | **0 / 38** |
+| Safety-gate vetoes in live re-simulation | **38** |
+| Chaos `LATE_SETTLEMENT` / `CONCURRENT_RECOVERY` invariants | **6/6 and 5/5 held** |
+| Manual-review workload (recorded) | **845 → 296 (−64.97%)** |
+
+---
+
 ## Solution of Project Feedbacks
 
 ## AI/ML Dataset & Evaluation
@@ -120,6 +144,16 @@ On the same 1,142-case dataset, the current decision engine produced:
 - [Business Impact Report](reports/business_impact/business_impact_report.md)
 - [Live Decision Audit](reports/business_impact/live_decisions_v1.csv)
 - [Stage 11 Evaluation](reports/stage11/readme.md)
+
+## Innovation
+
+APRS separates ML assessment from financial execution through a
+deterministic policy, Digital Twin state reconstruction, and a
+fresh-evidence safety gate immediately before execution.
+
+![APRS Architecture](reports/innovation/architecture.jpeg)
+
+See the [full Innovation Report](reports/innovation/innovation_report.md).
 
 
 

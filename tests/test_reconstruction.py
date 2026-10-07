@@ -285,3 +285,56 @@ def test_progress_only_stage_is_observed():
 )
 def test_confidence_values(scenario, expected):
     assert make(scenario).reconstruction_confidence == expected
+
+
+def test_cache_never_replays_a_different_event_content():
+    """Regression: the reconstruction cache key must be CONTENT-derived.
+
+    Two event sets sharing transaction_id and integer ids but differing in
+    content (status here) are different inputs; the second must be computed
+    fresh, not replayed from the first (the pure-function contract). Also
+    exercises clear_reconstruction_cache's per-transaction prefix match.
+    """
+    from api.services.event_reconstruction import (
+        clear_reconstruction_cache,
+        reconstruct_from_events as reconstruct,
+    )
+
+    clear_reconstruction_cache()  # isolate from other modules' entries
+    try:
+        shared_id = 990001
+        stale = FakeEvent(
+            id=shared_id,
+            event_id="EVT-REGRESS-1",
+            transaction_id="TXN-REGRESS",
+            provider_event_id="P-REGRESS-1",
+            event_type="CUSTOMER_DEBIT_CONFIRMED",
+            source="core_banking",
+            status="CONFIRMED",
+            event_timestamp=BASE,
+        )
+        conflicting = FakeEvent(
+            id=shared_id,  # same id — only the CONTENT differs
+            event_id="EVT-REGRESS-2",
+            transaction_id="TXN-REGRESS",
+            provider_event_id="P-REGRESS-2",
+            event_type="CUSTOMER_DEBIT_CONFIRMED",
+            source="core_banking",
+            status="FAILED",
+            event_timestamp=BASE,
+        )
+
+        first = reconstruct("TXN-REGRESS", [stale], NOW)
+        second = reconstruct("TXN-REGRESS", [conflicting], NOW)
+
+        assert first.customer_debit_status == "CONFIRMED"
+        assert second.customer_debit_status == "FAILED", (
+            "cache replayed a reconstruction computed from different inputs"
+        )
+
+        # per-transaction invalidation must actually remove this tx's entries
+        clear_reconstruction_cache("TXN-REGRESS")
+        third = reconstruct("TXN-REGRESS", [stale], NOW)
+        assert third.customer_debit_status == "CONFIRMED"
+    finally:
+        clear_reconstruction_cache()
