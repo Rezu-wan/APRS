@@ -601,7 +601,7 @@ python -m scripts.payment_event_simulator --transaction-id TXN-TEST --scenario g
 
 ## Live Deployment URL
 
-**Demo Deployment**: *To be deployed*
+**Demo Deployment**: https://teal-kulfi-3cd3a5.netlify.app/
 
 **Local Development URLs**:
 - Frontend: http://localhost:5173
